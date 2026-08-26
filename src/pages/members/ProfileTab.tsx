@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Building2, IdCard } from 'lucide-react';
-import { Form, Input, Switch } from 'antd';
+import { Building2, Download, IdCard, Receipt as ReceiptIcon } from 'lucide-react';
+import { Form, Input, Switch, Tooltip } from 'antd';
 import {
   Alert,
   Badge,
@@ -401,43 +401,51 @@ export const ProfileTab = ({ member, onChanged }: ProfileTabProps) => {
             {member.invoices.map((invoice) => (
               <li
                 key={invoice.id}
-                className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3 last:border-0 last:pb-0"
+                className="flex flex-col gap-2 border-b border-border pb-3 last:border-0 last:pb-0"
               >
-                <div className="flex flex-col gap-[2px]">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono text-13 text-fg">{invoice.invoice_number}</span>
                     <StatusChip domain="invoice" status={invoice.status} />
                   </div>
+                  <div className="flex items-center gap-1">
+                    <Tooltip title="Download invoice PDF">
+                      <Button
+                        variant="secondary"
+                        size="small"
+                        aria-label={`Download invoice ${invoice.invoice_number} PDF`}
+                        loading={downloadingId === `invoice:${invoice.id}`}
+                        icon={<Download size={14} strokeWidth={1.5} />}
+                        onClick={() => void downloadInvoice(invoice)}
+                      />
+                    </Tooltip>
+                    {invoice.status === 'PAID' ? (
+                      <Tooltip title="Download receipt">
+                        <Button
+                          variant="secondary"
+                          size="small"
+                          aria-label={`Download receipt for ${invoice.invoice_number}`}
+                          loading={downloadingId === `receipt:${invoice.id}`}
+                          icon={<ReceiptIcon size={14} strokeWidth={1.5} />}
+                          onClick={() => void downloadReceipt(invoice)}
+                        />
+                      </Tooltip>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <span className="text-12 text-fg-muted">
                     Due <DateCell value={invoice.due_date} />
                   </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <MoneyText amount={invoice.total_amount} currency={invoice.currency} />
-                  <Button
-                    variant="ghost"
-                    size="small"
-                    loading={downloadingId === `invoice:${invoice.id}`}
-                    onClick={() => void downloadInvoice(invoice)}
-                  >
-                    PDF
-                  </Button>
-                  {invoice.status === 'PAID' ? (
-                    <Button
-                      variant="ghost"
-                      size="small"
-                      loading={downloadingId === `receipt:${invoice.id}`}
-                      onClick={() => void downloadReceipt(invoice)}
-                    >
-                      Receipt
-                    </Button>
-                  ) : null}
-                  {canRecordPayment &&
-                  (invoice.status === 'ISSUED' ||
-                    invoice.status === 'PARTIALLY_PAID' ||
-                    invoice.status === 'OVERDUE') ? (
-                    <Button onClick={() => payment.ask(invoice)}>Mark as paid</Button>
-                  ) : null}
+                  <div className="flex items-center gap-3">
+                    <MoneyText amount={invoice.total_amount} currency={invoice.currency} />
+                    {canRecordPayment &&
+                    (invoice.status === 'ISSUED' ||
+                      invoice.status === 'PARTIALLY_PAID' ||
+                      invoice.status === 'OVERDUE') ? (
+                      <Button onClick={() => payment.ask(invoice)}>Mark as paid</Button>
+                    ) : null}
+                  </div>
                 </div>
               </li>
             ))}
