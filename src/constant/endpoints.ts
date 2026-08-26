@@ -99,6 +99,14 @@ export const ENDPOINTS = {
     download: (id: string) => `${API_BASE}/documents/${id}/download`,
   },
 
+  /** Every invoice, org-wide (M5, A-14). */
+  INVOICES: {
+    LIST: `${API_BASE}/admin/invoices`,
+    /** Shared by both audiences, same pattern as DOCUMENTS.download. */
+    pdf: (id: string) => `${API_BASE}/invoices/${id}/pdf`,
+    receiptPdf: (id: string) => `${API_BASE}/invoices/${id}/receipt/pdf`,
+  },
+
   /** Membership catalogue — categories, tiers, fees, document types (M2). */
   MASTERS: {
     CATEGORIES: `${API_BASE}/admin/membership-categories`,

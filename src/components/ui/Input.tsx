@@ -49,6 +49,8 @@ Input.displayName = 'Input';
 export interface TextareaProps extends Omit<TextAreaProps, 'status'> {
   label: string;
   hint?: string;
+  /** Guidance in a mark beside the label rather than standing under the field. */
+  help?: string;
   error?: string;
 }
 
@@ -58,13 +60,13 @@ export const Textarea = ({ label, hint, help, error, required, id, ...rest }: Te
 
   return (
     <Field
-        label={label}
-        htmlFor={inputId}
-        hint={hint}
-        help={help}
-        error={error}
-        required={required}
-      >
+      label={label}
+      htmlFor={inputId}
+      hint={hint}
+      help={help}
+      error={error}
+      required={required}
+    >
       <AntInput.TextArea
         {...rest}
         id={inputId}
@@ -81,13 +83,13 @@ export const PasswordInput = ({ label, hint, help, error, required, id, ...rest 
 
   return (
     <Field
-        label={label}
-        htmlFor={inputId}
-        hint={hint}
-        help={help}
-        error={error}
-        required={required}
-      >
+      label={label}
+      htmlFor={inputId}
+      hint={hint}
+      help={help}
+      error={error}
+      required={required}
+    >
       <AntInput.Password
         {...rest}
         id={inputId}

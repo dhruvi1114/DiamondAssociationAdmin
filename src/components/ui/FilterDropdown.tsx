@@ -156,10 +156,18 @@ export interface FilterGroupProps {
   children: ReactNode;
 }
 
-/** One labelled row inside the panel, so every filter is spaced the same. */
+/**
+ * One labelled row inside the panel, so every filter is spaced the same.
+ *
+ * The label is `text-supporting` — the app's 14/400 role, the same type the
+ * controls under it are set in. It used to be 13px medium, which was a fourth
+ * size in a panel already holding three, and made the labels read louder than
+ * the values they name. One role for the whole panel: the label and its control
+ * are one object, not a heading over a section.
+ */
 export const FilterGroup = ({ label, children }: FilterGroupProps) => (
   <div className="flex flex-col gap-1">
-    <span className="text-13 font-medium text-fg">{label}</span>
+    <span className="text-supporting text-fg">{label}</span>
     {children}
   </div>
 );

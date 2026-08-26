@@ -48,6 +48,10 @@ export interface MemberListRow {
   /** The PENDING → ACTIVE transition specifically — often NULL, since
    *  activation is usually automatic (payment), not an admin decision. */
   approved_by: string | null;
+  /** Who terminated the membership, when a person did. */
+  rejected_by: string | null;
+  /** Primary address state. `city` above comes off the same address row. */
+  state: string | null;
 }
 
 export interface MemberContact {
@@ -181,6 +185,9 @@ export interface ListMembersParams {
   status?: MemberStatus | '' | string;
   category_id?: string;
   tier_id?: string;
+  /** Comma-separated city / state NAMES, matched against the primary address. */
+  city?: string;
+  state?: string;
   sortBy?: MemberSortBy;
   sortOrder?: 'asc' | 'desc';
 }

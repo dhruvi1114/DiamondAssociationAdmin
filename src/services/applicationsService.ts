@@ -102,6 +102,11 @@ export interface ApplicationQueueRow {
   updated_by: string | null;
   /** Only the FINAL approval sets this — an intermediate stage clearing does not. */
   approved_by: string | null;
+  /** Who took the terminal REJECT. NULL on every application still in play. */
+  rejected_by: string | null;
+  /** Primary address of the applying company. */
+  city: string | null;
+  state: string | null;
   /**
    * `count(*) OVER ()` from the queue query. The envelope's `pagination.total`
    * is derived from it and is what screens should read; it is typed here only
@@ -125,6 +130,12 @@ export interface ListApplicationsParams {
   mine?: boolean;
   /** Narrows to applications carrying at least one PENDING document — the Verification tab. */
   has_pending_documents?: boolean;
+  /** Inclusive submitted-date window, `YYYY-MM-DD`. Either end may stand alone. */
+  submitted_from?: string;
+  submitted_to?: string;
+  /** Comma-separated city / state NAMES, matched against the primary address. */
+  city?: string;
+  state?: string;
   sortBy?: ApplicationSortBy;
   sortOrder?: 'asc' | 'desc';
 }

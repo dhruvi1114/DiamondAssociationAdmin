@@ -158,7 +158,7 @@ export const NAV_GROUPS: NavGroup[] = [
         path: '/billing/invoices',
         icon: FileText,
         anyOf: ['invoice.view'],
-        module: 'M4',
+        module: 'M5',
       },
       {
         key: 'payments',

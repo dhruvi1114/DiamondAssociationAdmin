@@ -111,6 +111,7 @@ export const DataTable = <T extends object>({
   serial = false,
   dataSource,
   columns,
+  onRow,
   ...rest
 }: DataTableProps<T>) => {
   /*
@@ -319,6 +320,39 @@ export const DataTable = <T extends object>({
       {/* The box AntD measures itself against; it does not scroll, its body does. */}
       <div ref={measureRef} className="min-h-0 flex-1 overflow-hidden">
         <AntTable<T>
+          /*
+            A row click that opens a record must not fire when the user was
+            selecting text in it.
+
+            Highlighting a GST number to copy it ends in a `click` on the row,
+            and on a clickable row that navigated away mid-drag — the value gone
+            before it could be copied, and no way to tell it from a misclick.
+            Guarded here rather than in each page so no table can forget it:
+            every `onClick` a caller returns from `onRow` is wrapped.
+          */
+          onRow={
+            onRow
+              ? (record, index) => {
+                  const handlers = onRow(record, index);
+                  const click = handlers.onClick;
+
+                  if (!click) return handlers;
+
+                  return {
+                    ...handlers,
+                    onClick: (event) => {
+                      const selection = window.getSelection();
+
+                      if (selection && !selection.isCollapsed && selection.toString().trim()) {
+                        return;
+                      }
+
+                      click(event);
+                    },
+                  };
+                }
+              : undefined
+          }
           /* Hook for the fill rules in `index.css` — see the note there. */
           className="data-table"
           size="middle"

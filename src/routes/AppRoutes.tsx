@@ -5,6 +5,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import AppShell from '@/layouts/AppShell';
 import ApplicationQueue from '@/pages/applications/ApplicationQueue';
 import ApplicationReview from '@/pages/applications/ApplicationReview';
+import Invoices from '@/pages/billing/Invoices';
 import Dashboard from '@/pages/Dashboard';
 import Categories from '@/pages/masters/Categories';
 import CompanyTypes from '@/pages/masters/CompanyTypes';
@@ -269,6 +270,15 @@ export const AppRoutes = () => {
           }
         />
 
+        <Route
+          path="/billing/invoices"
+          element={
+            <RequirePermission anyOf={['invoice.view']}>
+              <Invoices />
+            </RequirePermission>
+          }
+        />
+
         {NAV_GROUPS.flatMap((group) =>
           group.items
             .filter(
@@ -285,6 +295,7 @@ export const AppRoutes = () => {
                   '/applications',
                   '/settings/roles',
                   '/settings/workflow',
+                  '/billing/invoices',
                 ].includes(item.path),
             )
             .map((item) => (

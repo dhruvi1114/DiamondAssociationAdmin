@@ -19,6 +19,7 @@ import {
 import { Field, Group } from '@/components/ui/DetailFields';
 import { useConfirm } from '@/hooks/useConfirm';
 import { usePermissions } from '@/hooks/usePermissions';
+import InvoicesService from '@/services/invoicesService';
 import MastersService, { type Category } from '@/services/mastersService';
 import MembersService, {
   type AdminUpdateMemberInput,
@@ -61,6 +62,7 @@ export const ProfileTab = ({ member, onChanged }: ProfileTabProps) => {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const memberCategories = member.categories?.map((entry) => entry.category) ?? [];
 
   /**
@@ -89,6 +91,28 @@ export const ProfileTab = ({ member, onChanged }: ProfileTabProps) => {
       })
       .catch((caught: unknown) => setSaveError(asDisplayError(caught).message));
   }, [classOpen]);
+
+  const downloadInvoice = async (invoice: MemberInvoice) => {
+    setDownloadingId(`invoice:${invoice.id}`);
+    try {
+      await InvoicesService.downloadInvoicePdf(invoice.id, `${invoice.invoice_number}.pdf`);
+    } catch (caught) {
+      toast.error('Could not download invoice', { description: asDisplayError(caught).message });
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const downloadReceipt = async (invoice: MemberInvoice) => {
+    setDownloadingId(`receipt:${invoice.id}`);
+    try {
+      await InvoicesService.downloadReceiptPdf(invoice.id, `receipt-${invoice.invoice_number}.pdf`);
+    } catch (caught) {
+      toast.error('Could not download receipt', { description: asDisplayError(caught).message });
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const openEdit = () => {
@@ -364,10 +388,11 @@ export const ProfileTab = ({ member, onChanged }: ProfileTabProps) => {
       <Card>
         <h3 className="m-0 mb-2 text-14 font-semibold text-fg">Invoices</h3>
         {/*
-          No online checkout exists yet — a member pays by bank transfer or
-          similar and staff confirm it here. "Mark as paid" only shows on an
-          invoice that is actually payable, and only to ACCOUNTS' own
-          `payment.record` permission (member.status stays a separate gate).
+          A member can now pay online from the portal (M5). This stays the
+          offline path — a member pays by bank transfer or similar and staff
+          confirm it here. "Mark as paid" only shows on an invoice that is
+          actually payable, and only to ACCOUNTS' own `payment.record`
+          permission (member.status stays a separate gate).
         */}
         {member.invoices.length === 0 ? (
           <p className="m-0 text-13 text-fg-muted">No invoices raised yet.</p>
@@ -389,6 +414,24 @@ export const ProfileTab = ({ member, onChanged }: ProfileTabProps) => {
                 </div>
                 <div className="flex items-center gap-3">
                   <MoneyText amount={invoice.total_amount} currency={invoice.currency} />
+                  <Button
+                    variant="ghost"
+                    size="small"
+                    loading={downloadingId === `invoice:${invoice.id}`}
+                    onClick={() => void downloadInvoice(invoice)}
+                  >
+                    PDF
+                  </Button>
+                  {invoice.status === 'PAID' ? (
+                    <Button
+                      variant="ghost"
+                      size="small"
+                      loading={downloadingId === `receipt:${invoice.id}`}
+                      onClick={() => void downloadReceipt(invoice)}
+                    >
+                      Receipt
+                    </Button>
+                  ) : null}
                   {canRecordPayment &&
                   (invoice.status === 'ISSUED' ||
                     invoice.status === 'PARTIALLY_PAID' ||

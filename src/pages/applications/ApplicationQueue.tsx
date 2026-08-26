@@ -1,3 +1,5 @@
+import { DatePicker } from 'antd';
+import dayjs from 'dayjs';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { EyeOutlined } from '@ant-design/icons';
@@ -11,12 +13,12 @@ import {
   FilterDropdown,
   FilterGroup,
   Highlight,
+  FormSelect,
   MultiSelect,
   NotAvailable,
   PageHeader,
   RowActions,
   SearchInput,
-  Segmented,
   StackedCell,
   StatusChip,
   Tabs,
@@ -37,7 +39,7 @@ import MembersService, {
   type MemberSortBy,
   type MemberStatus,
 } from '@/services/membersService';
-import type { PaginationMeta } from '@/services/BaseService';
+import type { ApiResult, PaginationMeta } from '@/services/BaseService';
 import { asDisplayError, type DisplayError } from '@/utils/apiError';
 import { formatAge, hoursSince } from '@/utils/format';
 
@@ -100,6 +102,13 @@ interface QueueFilters {
   category: string[];
   /** `true` = only applications carrying at least one unverified document. */
   pendingOnly: boolean;
+  /** `YYYY-MM-DD`, or '' for an open end. Strings, because they go straight
+      into the URL and straight onto the query string. */
+  submittedFrom: string;
+  submittedTo: string;
+  /** Primary-address city / state NAMES. Multi, like the other list filters. */
+  city: string[];
+  state: string[];
 }
 
 const EMPTY_QUEUE_FILTERS: QueueFilters = {
@@ -108,6 +117,10 @@ const EMPTY_QUEUE_FILTERS: QueueFilters = {
   stage: [],
   category: [],
   pendingOnly: false,
+  submittedFrom: '',
+  submittedTo: '',
+  city: [],
+  state: [],
 };
 
 const SHOW_OPTIONS: Array<{ value: 'mine' | 'all'; label: string }> = [
@@ -119,6 +132,62 @@ const DOCUMENTS_OPTIONS: Array<{ value: 'any' | 'pending'; label: string }> = [
   { value: 'any', label: 'Any' },
   { value: 'pending', label: 'Pending only' },
 ];
+
+/**
+ * City and state names for the two tabs' location filters.
+ *
+ * Names, not ids, because that is what the API matches on — the master-id
+ * columns on `MemberAddresses` are nullable and older rows leave them empty,
+ * while the text ones never are.
+ *
+ * Paged to exhaustion rather than fetched once. The masters list caps `limit` at
+ * 100 and the city master already holds 183 rows, so a single page would have
+ * offered the first hundred alphabetically and silently dropped the rest —
+ * "Surat" among them, on a filter built for a Surat-based association. Two
+ * requests, and the panel offers every city there is.
+ *
+ * Either list failing costs a filter, not the screen, the same way the category
+ * and workflow lookups behave.
+ */
+const PAGE_SIZE = 100;
+/** Backstop against a paging bug turning into an unbounded request loop. */
+const MAX_PAGES = 20;
+
+const fetchAllNames = async <T extends { name: string }>(
+  fetchPage: (page: number) => Promise<ApiResult<T[]>>,
+): Promise<string[]> => {
+  const first = await fetchPage(1);
+  const names = first.data.map((row) => row.name);
+  const pages = Math.min(first.pagination?.totalPages ?? 1, MAX_PAGES);
+
+  if (pages <= 1) return names;
+
+  const rest = await Promise.all(
+    Array.from({ length: pages - 1 }, (_, index) => fetchPage(index + 2)),
+  );
+
+  return [...names, ...rest.flatMap((result) => result.data.map((row) => row.name))];
+};
+
+const useLocationOptions = () => {
+  const [states, setStates] = useState<string[]>([]);
+  const [cities, setCities] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetchAllNames((page) => MastersService.listStates({ page, limit: PAGE_SIZE, activeOnly: true }))
+      .then(setStates)
+      .catch(() => setStates([]));
+
+    fetchAllNames((page) => MastersService.listCities({ page, limit: PAGE_SIZE, activeOnly: true }))
+      .then(setCities)
+      .catch(() => setCities([]));
+  }, []);
+
+  return { states, cities };
+};
+
+/** A name list as `MultiSelect` options — the value IS the name. */
+const asOptions = (names: string[]) => names.map((name) => ({ value: name, label: name }));
 
 /** `?status=A,B` ⇄ `['A','B']`. Absent and empty are the same thing: no filter. */
 const readList = (value: string | null): string[] =>
@@ -153,6 +222,7 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<DisplayError | null>(null);
+  const locations = useLocationOptions();
 
   const search = params.get('q') ?? '';
   /*
@@ -167,10 +237,16 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
   /** Absent means the default, "my queue" — same contract `/members`'s old redirect relied on. */
   const mineParam = params.get('mine') ?? '';
   const pendingParam = params.get('pending') ?? '';
+  const submittedFrom = params.get('submittedFrom') ?? '';
+  const submittedTo = params.get('submittedTo') ?? '';
+  const cityParam = params.get('city') ?? '';
+  const stateParam = params.get('state') ?? '';
 
   const statuses = readList(statusParam) as ApplicationStatus[];
   const stageIds = readList(stageParam);
   const categoryIds = readList(categoryParam);
+  const cityNames = readList(cityParam);
+  const stateNames = readList(stateParam);
   const mine = mineParam !== 'false';
   const pendingOnly = pendingParam === 'true';
   const page = Number(params.get('page') ?? '1') || 1;
@@ -189,7 +265,15 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
     a real filter (it used to be a whole tab) so it counts on both.
   */
   const hasFilters = Boolean(
-    search || statuses.length || stageIds.length || categoryIds.length || pendingOnly,
+    search ||
+    statuses.length ||
+    stageIds.length ||
+    categoryIds.length ||
+    pendingOnly ||
+    submittedFrom ||
+    submittedTo ||
+    cityNames.length ||
+    stateNames.length,
   );
 
   /*
@@ -199,12 +283,35 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
     box — on every keystroke elsewhere on the page.
   */
   const filters: QueueFilters = useMemo(
-    () => ({ mine, status: statuses, stage: stageIds, category: categoryIds, pendingOnly }),
+    () => ({
+      mine,
+      status: statuses,
+      stage: stageIds,
+      category: categoryIds,
+      pendingOnly,
+      submittedFrom,
+      submittedTo,
+      city: cityNames,
+      state: stateNames,
+    }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mineParam, statusParam, stageParam, categoryParam, pendingParam],
+    [
+      mineParam,
+      statusParam,
+      stageParam,
+      categoryParam,
+      pendingParam,
+      submittedFrom,
+      submittedTo,
+      cityParam,
+      stateParam,
+    ],
   );
+  /* The window is one filter however many of its two ends are set. */
   const activeFilterCount =
-    [statuses, stageIds, categoryIds].filter((f) => f.length).length + (pendingOnly ? 1 : 0);
+    [statuses, stageIds, categoryIds, cityNames, stateNames].filter((f) => f.length).length +
+    (pendingOnly ? 1 : 0) +
+    (submittedFrom || submittedTo ? 1 : 0);
 
   const patchParams = useCallback(
     (patch: Record<string, string | null>, options?: { keepPage?: boolean }) => {
@@ -257,6 +364,10 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
         ...(statuses.length ? { status: statuses.join(',') } : {}),
         ...(stageIds.length ? { stage_id: stageIds.join(',') } : {}),
         ...(categoryIds.length ? { category_id: categoryIds.join(',') } : {}),
+        ...(submittedFrom ? { submitted_from: submittedFrom } : {}),
+        ...(submittedTo ? { submitted_to: submittedTo } : {}),
+        ...(cityNames.length ? { city: cityNames.join(',') } : {}),
+        ...(stateNames.length ? { state: stateNames.join(',') } : {}),
         sortBy: sort.sortBy as ApplicationSortBy,
         sortOrder: sort.sortOrder,
       });
@@ -305,7 +416,18 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
   }, []);
 
   const clearFilters = useCallback(() => {
-    patchParams({ q: null, mine: null, status: null, stage: null, category: null, pending: null });
+    patchParams({
+      q: null,
+      mine: null,
+      status: null,
+      stage: null,
+      category: null,
+      pending: null,
+      submittedFrom: null,
+      submittedTo: null,
+      city: null,
+      state: null,
+    });
   }, [patchParams]);
 
   /* Apply commits all five at once — one request, not five. */
@@ -317,6 +439,10 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
         stage: draft.stage.join(',') || null,
         category: draft.category.join(',') || null,
         pending: draft.pendingOnly ? 'true' : null,
+        submittedFrom: draft.submittedFrom || null,
+        submittedTo: draft.submittedTo || null,
+        city: draft.city.join(',') || null,
+        state: draft.state.join(',') || null,
       }),
     [patchParams],
   );
@@ -342,14 +468,21 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
           {(draft, setDraft) => (
             <>
               {/*
-                Segmented, not a MultiSelect: "mine" and "all" are mutually
-                exclusive views, not a set you narrow by picking several — the
-                control the app uses for exactly this shape (`ui/Segmented`).
+                A single-value dropdown, not a multi-select: "mine" and "all" are
+                mutually exclusive views, and a control that lets you tick both
+                is asking a question with no answer. `FormSelect` rather than
+                `Select` because `FilterGroup` above already draws the label.
+
+                `searchThreshold` high enough to hide the search box — it is a
+                fixed two-value list, and a search field over two options is
+                furniture.
               */}
               <FilterGroup label="Show">
-                <Segmented
+                <FormSelect
+                  className="w-full"
                   value={draft.mine ? 'mine' : 'all'}
                   options={SHOW_OPTIONS}
+                  searchThreshold={8}
                   onChange={(next) => setDraft((d) => ({ ...d, mine: next === 'mine' }))}
                 />
               </FilterGroup>
@@ -397,11 +530,64 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
                 />
               </FilterGroup>
 
+              {/*
+                Matched on the NAME, which is what the API compares against —
+                the master-id columns on an address are nullable and older rows
+                leave them empty. Multi-select, because "Surat OR Ahmedabad" is
+                a real question and a single-value control cannot ask it.
+              */}
+              <FilterGroup label="State">
+                <MultiSelect
+                  value={draft.state}
+                  placeholder="Any state"
+                  searchThreshold={8}
+                  options={asOptions(locations.states)}
+                  onChange={(next) => setDraft((d) => ({ ...d, state: next.map(String) }))}
+                />
+              </FilterGroup>
+
+              <FilterGroup label="City">
+                <MultiSelect
+                  value={draft.city}
+                  placeholder="Any city"
+                  searchThreshold={8}
+                  options={asOptions(locations.cities)}
+                  onChange={(next) => setDraft((d) => ({ ...d, city: next.map(String) }))}
+                />
+              </FilterGroup>
+
               <FilterGroup label="Documents">
-                <Segmented
+                <FormSelect
+                  className="w-full"
                   value={draft.pendingOnly ? 'pending' : 'any'}
                   options={DOCUMENTS_OPTIONS}
+                  searchThreshold={8}
                   onChange={(next) => setDraft((d) => ({ ...d, pendingOnly: next === 'pending' }))}
+                />
+              </FilterGroup>
+
+              {/*
+                The submitted date, matching the column the queue sorts by. Both
+                ends are optional — "everything since Monday" is asked as often
+                as a closed window, and requiring an end date would make a
+                reviewer invent one.
+              */}
+              <FilterGroup label="Submitted">
+                <DatePicker.RangePicker
+                  className="w-full"
+                  format="YYYY-MM-DD"
+                  allowEmpty={[true, true]}
+                  value={[
+                    draft.submittedFrom ? dayjs(draft.submittedFrom) : null,
+                    draft.submittedTo ? dayjs(draft.submittedTo) : null,
+                  ]}
+                  onChange={(range) =>
+                    setDraft((d) => ({
+                      ...d,
+                      submittedFrom: range?.[0] ? range[0].format('YYYY-MM-DD') : '',
+                      submittedTo: range?.[1] ? range[1].format('YYYY-MM-DD') : '',
+                    }))
+                  }
                 />
               </FilterGroup>
             </>
@@ -421,6 +607,7 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
     activeFilterCount,
     workflow,
     categories,
+    locations,
   ]);
 
   /**
@@ -434,21 +621,37 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
   const columns = useMemo(
     () => [
       {
+        /*
+          Its own column, not the second line under the company. It is the
+          reference quoted on the phone and in email, it is one of the three
+          things the search matches on, and a value people read out is a column.
+        */
+        title: 'Application No.',
+        dataIndex: 'application_number',
+        key: 'application_number',
+        width: 180,
+        render: (value: string | null) =>
+          value ? (
+            <span className="font-mono text-supporting text-fg-muted">
+              <Highlight text={value} query={search} />
+            </span>
+          ) : (
+            <NotAvailable />
+          ),
+      },
+      {
         title: 'Application',
         dataIndex: 'company_name',
         key: 'company_name',
         sorter: true,
-        width: 220,
+        width: 200,
         render: (_: unknown, row: ApplicationQueueRow) => (
-          <StackedCell
-            mono
-            primary={<Highlight text={row.company_name} query={search} />}
-            secondary={<Highlight text={row.application_number} query={search} />}
-          />
+          <Highlight text={row.company_name} query={search} />
         ),
       },
+
       {
-        title: 'Class',
+        title: 'Category',
         dataIndex: 'category_name',
         key: 'category_name',
         width: 130,
@@ -469,14 +672,69 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
         width: 170,
         render: (_: unknown, row: ApplicationQueueRow) =>
           row.stage_name ? (
-            /* The second line is whose queue this is — what decides whether the
-               reviewer can act, independently of their permissions. */
-            <StackedCell
-              primary={row.stage_name}
-              secondary={
-                row.approver_role_code ? `${row.approver_role_code} decides` : <NotAvailable />
-              }
-            />
+            /* The stage alone. The second line used to name whose queue it is —
+               "ADMIN decides" — which repeated the same role on nearly every row
+               and doubled the height of the whole table to say it. */
+            <span className="text-supporting text-fg">{row.stage_name}</span>
+          ) : (
+            <NotAvailable />
+          ),
+      },
+      {
+        title: 'Email',
+        dataIndex: 'applicant_email',
+        key: 'applicant_email',
+        width: 220,
+        render: (_: unknown, row: ApplicationQueueRow) => (
+          <TextCell value={row.applicant_email} width={196} />
+        ),
+      },
+      {
+        title: 'Mobile',
+        dataIndex: 'applicant_phone',
+        key: 'applicant_phone',
+        width: 130,
+        render: (_: unknown, row: ApplicationQueueRow) =>
+          row.applicant_phone ? (
+            <span className="font-mono text-supporting text-fg">{row.applicant_phone}</span>
+          ) : (
+            <NotAvailable />
+          ),
+      },
+      {
+        title: 'GST No.',
+        dataIndex: 'gst_number',
+        key: 'gst_number',
+        width: 160,
+        render: (_: unknown, row: ApplicationQueueRow) =>
+          row.gst_number ? (
+            <span className="font-mono text-supporting text-fg">
+              <Highlight text={row.gst_number} query={search} />
+            </span>
+          ) : (
+            <NotAvailable />
+          ),
+      },
+      {
+        title: 'PAN No.',
+        dataIndex: 'pan_number',
+        key: 'pan_number',
+        width: 130,
+        render: (_: unknown, row: ApplicationQueueRow) =>
+          row.pan_number ? (
+            <span className="font-mono text-supporting text-fg">{row.pan_number}</span>
+          ) : (
+            <NotAvailable />
+          ),
+      },
+      {
+        title: 'Company Type',
+        dataIndex: 'company_type_name',
+        key: 'company_type_name',
+        width: 150,
+        render: (_: unknown, row: ApplicationQueueRow) =>
+          row.company_type_name ? (
+            <span className="text-supporting text-fg">{row.company_type_name}</span>
           ) : (
             <NotAvailable />
           ),
@@ -489,7 +747,7 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
         dataIndex: 'status',
         key: 'status',
         sorter: true,
-        width: 130,
+        width: 140,
         render: (value: ApplicationStatus) => <StatusChip domain="application" status={value} />,
       },
       {
@@ -603,78 +861,48 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
         ),
       },
       {
+        title: 'Approved By',
+        dataIndex: 'approved_by',
+        key: 'approved_by',
+        width: 180,
+        render: (_: unknown, row: ApplicationQueueRow) =>
+          row.approved_by ? (
+            <span className="text-supporting text-fg">{row.approved_by}</span>
+          ) : (
+            <NotAvailable />
+          ),
+      },
+      /*
+        Only while something on this page was actually rejected.
+
+        A rejection is rare and terminal, so on a healthy queue this column would
+        be a full column of "N/A" pushing the columns that matter off the right
+        edge. Judged per page, not per dataset — the table only knows what it has
+        been given, and claiming otherwise would need a second request.
+      */
+      ...(rows.some((row) => row.rejected_by)
+        ? [
+            {
+              title: 'Rejected By',
+              dataIndex: 'rejected_by',
+              key: 'rejected_by',
+              width: 180,
+              render: (_: unknown, row: ApplicationQueueRow) =>
+                row.rejected_by ? (
+                  <span className="text-supporting text-fg">{row.rejected_by}</span>
+                ) : (
+                  <NotAvailable />
+                ),
+            },
+          ]
+        : []),
+      {
         title: 'Created',
         dataIndex: 'createdAt',
         key: 'createdAt',
         sorter: true,
         width: 130,
         render: (_: unknown, row: ApplicationQueueRow) => <DateCell value={row.createdAt} />,
-      },
-      {
-        title: 'Updated',
-        dataIndex: 'updatedAt',
-        key: 'updatedAt',
-        width: 130,
-        render: (_: unknown, row: ApplicationQueueRow) => <DateCell value={row.updatedAt} />,
-      },
-      {
-        title: 'Email',
-        dataIndex: 'applicant_email',
-        key: 'applicant_email',
-        width: 220,
-        render: (_: unknown, row: ApplicationQueueRow) => (
-          <TextCell value={row.applicant_email} width={196} />
-        ),
-      },
-      {
-        title: 'Mobile',
-        dataIndex: 'applicant_phone',
-        key: 'applicant_phone',
-        width: 130,
-        render: (_: unknown, row: ApplicationQueueRow) =>
-          row.applicant_phone ? (
-            <span className="font-mono text-supporting text-fg">{row.applicant_phone}</span>
-          ) : (
-            <NotAvailable />
-          ),
-      },
-      {
-        title: 'GST No.',
-        dataIndex: 'gst_number',
-        key: 'gst_number',
-        width: 160,
-        render: (_: unknown, row: ApplicationQueueRow) =>
-          row.gst_number ? (
-            <span className="font-mono text-supporting text-fg">
-              <Highlight text={row.gst_number} query={search} />
-            </span>
-          ) : (
-            <NotAvailable />
-          ),
-      },
-      {
-        title: 'PAN No.',
-        dataIndex: 'pan_number',
-        key: 'pan_number',
-        width: 130,
-        render: (_: unknown, row: ApplicationQueueRow) =>
-          row.pan_number ? (
-            <span className="font-mono text-supporting text-fg">{row.pan_number}</span>
-          ) : (
-            <NotAvailable />
-          ),
-      },
-      {
-        title: 'Company Type',
-        dataIndex: 'company_type_name',
-        key: 'company_type_name',
-        width: 150,
-        render: (_: unknown, row: ApplicationQueueRow) =>
-          row.company_type_name ? (
-            <span className="text-supporting text-fg">{row.company_type_name}</span>
-          ) : (
-            <NotAvailable />
-          ),
       },
       {
         title: 'Created By',
@@ -689,6 +917,14 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
           ),
       },
       {
+        title: 'Updated',
+        dataIndex: 'updatedAt',
+        key: 'updatedAt',
+        width: 130,
+        render: (_: unknown, row: ApplicationQueueRow) => <DateCell value={row.updatedAt} />,
+      },
+
+      {
         title: 'Updated By',
         dataIndex: 'updated_by',
         key: 'updated_by',
@@ -700,17 +936,20 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
             <NotAvailable />
           ),
       },
+
       {
-        title: 'Approved By',
-        dataIndex: 'approved_by',
-        key: 'approved_by',
-        width: 180,
-        render: (_: unknown, row: ApplicationQueueRow) =>
-          row.approved_by ? (
-            <span className="text-supporting text-fg">{row.approved_by}</span>
-          ) : (
-            <NotAvailable />
-          ),
+        title: 'City',
+        dataIndex: 'city',
+        key: 'city',
+        width: 140,
+        render: (value: string | null) => <TextCell value={value} width={116} />,
+      },
+      {
+        title: 'State',
+        dataIndex: 'state',
+        key: 'state',
+        width: 140,
+        render: (value: string | null) => <TextCell value={value} width={116} />,
       },
       {
         title: 'Actions',
@@ -732,7 +971,7 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
         ),
       },
     ],
-    [navigate, search, maxResubmissions],
+    [navigate, search, maxResubmissions, rows],
   );
 
   /**
@@ -821,9 +1060,12 @@ const MEMBER_DEFAULT_SORT: TableSort = { sortBy: 'createdAt', sortOrder: 'desc' 
 interface MemberFilters {
   status: MemberStatus[];
   category: string[];
+  /** Primary-address city / state NAMES — the same match the API does. */
+  city: string[];
+  state: string[];
 }
 
-const EMPTY_MEMBER_FILTERS: MemberFilters = { status: [], category: [] };
+const EMPTY_MEMBER_FILTERS: MemberFilters = { status: [], category: [], city: [], state: [] };
 
 /**
  * The company directory, moved here from its own nav item. Kept as local
@@ -845,9 +1087,18 @@ const MemberCompanyTab = ({ onRegisterSearch }: TabBodyProps) => {
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<MemberFilters>(EMPTY_MEMBER_FILTERS);
   const [sort, setSort] = useState<TableSort>(MEMBER_DEFAULT_SORT);
+  const locations = useLocationOptions();
 
-  const hasFilters = Boolean(search || filters.status.length || filters.category.length);
-  const activeFilterCount = [filters.status, filters.category].filter((f) => f.length).length;
+  const hasFilters = Boolean(
+    search ||
+    filters.status.length ||
+    filters.category.length ||
+    filters.city.length ||
+    filters.state.length,
+  );
+  const activeFilterCount = [filters.status, filters.category, filters.city, filters.state].filter(
+    (f) => f.length,
+  ).length;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -860,6 +1111,8 @@ const MemberCompanyTab = ({ onRegisterSearch }: TabBodyProps) => {
         ...(search ? { search } : {}),
         ...(filters.status.length ? { status: filters.status.join(',') } : {}),
         ...(filters.category.length ? { category_id: filters.category.join(',') } : {}),
+        ...(filters.city.length ? { city: filters.city.join(',') } : {}),
+        ...(filters.state.length ? { state: filters.state.join(',') } : {}),
         sortBy: sort.sortBy as MemberSortBy,
         sortOrder: sort.sortOrder,
       });
@@ -940,6 +1193,27 @@ const MemberCompanyTab = ({ onRegisterSearch }: TabBodyProps) => {
                   onChange={(next) => setDraft((d) => ({ ...d, category: next.map(String) }))}
                 />
               </FilterGroup>
+
+              {/* By name, matching the API — see `useLocationOptions`. */}
+              <FilterGroup label="State">
+                <MultiSelect
+                  value={draft.state}
+                  placeholder="Any state"
+                  searchThreshold={8}
+                  options={asOptions(locations.states)}
+                  onChange={(next) => setDraft((d) => ({ ...d, state: next.map(String) }))}
+                />
+              </FilterGroup>
+
+              <FilterGroup label="City">
+                <MultiSelect
+                  value={draft.city}
+                  placeholder="Any city"
+                  searchThreshold={8}
+                  options={asOptions(locations.cities)}
+                  onChange={(next) => setDraft((d) => ({ ...d, city: next.map(String) }))}
+                />
+              </FilterGroup>
             </>
           )}
         </FilterDropdown>
@@ -956,6 +1230,7 @@ const MemberCompanyTab = ({ onRegisterSearch }: TabBodyProps) => {
     clearFilters,
     activeFilterCount,
     categories,
+    locations,
   ]);
 
   const columns = useMemo(
@@ -966,21 +1241,16 @@ const MemberCompanyTab = ({ onRegisterSearch }: TabBodyProps) => {
         key: 'company_name',
         sorter: true,
         width: 220,
-        render: (_: unknown, row: MemberListRow) => {
-          const secondary = [
-            row.legal_name && row.legal_name !== row.company_name ? row.legal_name : null,
-            row.city,
-          ]
-            .filter(Boolean)
-            .join(' · ');
-
-          return (
-            <StackedCell
-              primary={<Highlight text={row.company_name} query={search} />}
-              secondary={secondary}
-            />
-          );
-        },
+        render: (_: unknown, row: MemberListRow) => (
+          /* The city moved out to its own column — it is filterable now, and a
+             value you can filter on is a column, not a suffix on a name. */
+          <StackedCell
+            primary={<Highlight text={row.company_name} query={search} />}
+            secondary={
+              row.legal_name && row.legal_name !== row.company_name ? row.legal_name : null
+            }
+          />
+        ),
       },
       {
         title: 'Code',
@@ -1148,6 +1418,43 @@ const MemberCompanyTab = ({ onRegisterSearch }: TabBodyProps) => {
             <NotAvailable label="System" />
           ),
       },
+      /*
+        Only while something on this page carries one.
+
+        For a member that means TERMINATED — a row in this list was approved to
+        get here, so there is no application rejection to report. On a healthy
+        directory the column would otherwise be a full column of "N/A".
+      */
+      ...(rows.some((row) => row.rejected_by)
+        ? [
+            {
+              title: 'Rejected By',
+              dataIndex: 'rejected_by',
+              key: 'rejected_by',
+              width: 180,
+              render: (_: unknown, row: MemberListRow) =>
+                row.rejected_by ? (
+                  <span className="text-supporting text-fg">{row.rejected_by}</span>
+                ) : (
+                  <NotAvailable />
+                ),
+            },
+          ]
+        : []),
+      {
+        title: 'City',
+        dataIndex: 'city',
+        key: 'city',
+        width: 140,
+        render: (value: string | null) => <TextCell value={value} width={116} />,
+      },
+      {
+        title: 'State',
+        dataIndex: 'state',
+        key: 'state',
+        width: 140,
+        render: (value: string | null) => <TextCell value={value} width={116} />,
+      },
       {
         title: 'Actions',
         key: 'actions',
@@ -1167,7 +1474,7 @@ const MemberCompanyTab = ({ onRegisterSearch }: TabBodyProps) => {
         ),
       },
     ],
-    [navigate, search],
+    [navigate, search, rows],
   );
 
   return (

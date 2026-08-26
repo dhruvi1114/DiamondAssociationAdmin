@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Tooltip } from 'antd';
 import { Check, ChevronDown, Download, FileText, X } from 'lucide-react';
 import {
   Alert,
@@ -412,14 +413,15 @@ export const DocumentVerificationDrawer = ({
                     wherever the control is blocked, so the two never both fire.
                   */}
                     <div className="flex flex-none items-center gap-2">
-                      <Button
-                        size="small"
-                        variant="secondary"
-                        aria-label="Download this document"
-                        title="Download"
-                        icon={<Download size={14} strokeWidth={1.5} />}
-                        onClick={() => void openFile(document)}
-                      />
+                      <Tooltip title="Download">
+                        <Button
+                          size="small"
+                          variant="secondary"
+                          aria-label="Download this document"
+                          icon={<Download size={14} strokeWidth={1.5} />}
+                          onClick={() => void openFile(document)}
+                        />
+                      </Tooltip>
 
                       {canVerify ? (
                         <>
