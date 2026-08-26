@@ -1,0 +1,823 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------------------------------------------------------
+   Geist, self-hosted as a variable font.
+
+   Two files, one family: the weight axis spans 100–900 in each, so every weight
+   the design system uses (400 / 500 / 600) comes out of a single download per
+   style rather than one file per weight.
+
+   `font-display: swap` renders the fallback immediately and repaints when Geist
+   arrives — on a sign-in screen, text you can read late beats text you cannot
+   read at all.
+
+   The files themselves are NOT in the repository; see public/fonts/README.md.
+   Until they are added these rules simply never match and the stack falls
+   through to the system font.
+   --------------------------------------------------------------------------- */
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-Italic.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* ---------------------------------------------------------------------------
+   Tailwind preflight is disabled so AntD's reset can own element defaults
+   (the documented AntD + Tailwind recipe). Preflight is also what sets
+   `border-style: solid` on every element — without it a `border-b` sets a WIDTH
+   but leaves the style at `none`, so the border silently does not render.
+   Every hairline in this app depended on that. Restore just the style default;
+   widths stay 0 until a utility or an AntD component sets one.
+   --------------------------------------------------------------------------- */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    /*
+      BOTH halves, or nothing works:
+      - `border-width: 0` because the UA default is `medium`, and setting only
+        the style makes every element sprout a border (which is exactly what
+        happened the first time this was attempted).
+      - `border-style: solid` because a Tailwind `border-b` sets only a width;
+        with the UA default style of `none` the hairline silently never renders.
+      - `border-color` so an un-suffixed `border` utility lands on our hairline
+        rather than `currentColor`.
+      AntD components set their own widths explicitly, so they are unaffected.
+    */
+    border-width: 0;
+    border-style: solid;
+    border-color: var(--border);
+  }
+}
+
+/*
+ * Base layer. Tailwind's preflight is off (AntD ships its own reset), so the
+ * handful of global rules we actually want live here — and they reference
+ * tokens only, never a literal.
+ */
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-feature-settings: var(--font-feature-settings);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Money, dates and counts line up in columns. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* One visible focus ring everywhere — keyboard reachability is contractual. */
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Sign-in screen only.
+
+   The approved comp draws taller controls than the 8px/32px operator system
+   every screen behind the login uses. Rather than fork Input — or thread a
+   variant prop through a primitive that did not otherwise change — the
+   difference is scoped to `.auth-scope`, which `AuthShell` puts on its root and
+   nothing else uses.
+
+   Fields and the primary action share one box: 44px tall, 11px corner.
+
+   AntD is emitted at single-class specificity (`hashPriority="high"` in App.tsx),
+   so these two-class selectors win without `!important`.
+   --------------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------------
+   Sign-in artwork — framing and motion.
+
+   `__stage` carries the framing transform AND the drift, because they are the
+   same property: keyframes that omitted the offset would snap the stone back to
+   centre on the first frame. The glints and the sheen are children of the stage
+   and positioned as percentages of it, so they travel with the stone whenever
+   the framing is re-aimed.
+
+   The stage is scaled up before it is offset so the drift can never pull a bare
+   edge into view — at 1535×1025 against a ~3:2 viewport, `object-fit: cover`
+   leaves almost no slack of its own.
+
+   That last rule holds for three of the four edges. The stone needs to sit in
+   the gap between the lockup and the card — around 48% across — and it is baked
+   into the render at 31% of its own width, so the scene has to travel ~18% of
+   the viewport to the right. No plausible zoom covers a shift that large (the
+   overhang is only `(scale - 1) / 2`, and a bigger zoom is the opposite of the
+   smaller stone that was asked for), so on a wide viewport the render's left
+   edge does come into frame. `.auth-art` feathers it out instead: the artwork
+   fades to nothing before that edge can be seen, and the wash underneath shows
+   through. It is also the calmer backdrop for the lockup, which sits in exactly
+   that band.
+   --------------------------------------------------------------------------- */
+.auth-art {
+  /*
+    The scene is pushed 18% right, so the render's own left edge sits about 15%
+    across. The mask is still fully transparent there, so the cut is never
+    visible — it dissolves into the wash a good distance before it. The other
+    three edges stay covered, so this is the only one that needs feathering.
+  */
+  -webkit-mask-image: linear-gradient(to right, transparent 0 14%, #000 32%);
+  mask-image: linear-gradient(to right, transparent 0 14%, #000 32%);
+}
+
+/* ---------------------------------------------------------------------------
+   The band cut — below `lg`, where the render is a strip across the foot of the
+   page instead of the ground behind a split layout.
+
+   Different problem, different framing. There is no gap between two columns to
+   aim at: the card owns the middle of the page, so the stone sits low and in the
+   left third, where it reads as the page standing on something rather than as a
+   picture the form is covering up. The mask is vertical for the same reason —
+   the strip has to dissolve upward into the wash, and its left edge is covered
+   by the zoom, so the horizontal feather above would only fight it.
+   --------------------------------------------------------------------------- */
+.auth-art--band {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 58%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 58%);
+}
+
+.auth-art--band .auth-art__stage {
+  /*
+    1.25 buys 12.5% of overhang per side, which the 8%/6% offsets spend and still
+    leave every edge covered at both ends of the `sm`–`lg` range (the band's own
+    aspect ratio crosses the render's 1.50 somewhere in the middle of it, so
+    which pair of edges has the slack flips — the zoom has to cover both cases).
+
+    No drift. `auth-drift` hard-codes the full variant's offset, so sharing it
+    would snap this framing to that one on the first frame; a second keyframe set
+    for a decorative strip that is half-faded anyway is not worth the surface.
+  */
+  transform: translate(8%, 6%) scale(1.25);
+  animation: none;
+}
+
+.auth-art__stage {
+  position: absolute;
+  inset: 0;
+  transform-origin: center;
+  /*
+    The stone lands in the gap between the lockup and the card, a little below
+    centre. Both numbers are fractions of the viewport, and the stone's position
+    inside the render is a fraction of the render, so the horizontal aim holds at
+    any width: 18% of travel plus 31% into the image puts the crown at ~48%
+    across whatever the window is doing.
+
+    Nothing here is capped — the artwork fills the window and so does the grid
+    beside it — so the stage's percentages and the columns' widths are fractions
+    of the same box. That is what keeps the aim true at any width: the stone
+    lands in the gap on a 13-inch laptop and on a 34-inch monitor without a
+    breakpoint either way.
+
+    18% is far past the overhang — that is what the mask on `.auth-art` is for,
+    and it is why the two vertical edges are allowed to escape. Top and bottom
+    still obey the old rule, which is why the zoom stays at 1.06 rather than
+    dropping to 1: on a tall viewport (a portrait tablet is still above `lg`) the
+    render's own aspect ratio, 1.50, leaves no vertical slack at all, and the
+    2.5% drop would pull a bare edge in across the top. 1.06 buys the 3% per side
+    that the drop and the drift spend between them.
+  */
+  transform: translate(18%, 2.5%) scale(1.06);
+  will-change: transform;
+  animation: auth-drift 16s ease-in-out infinite;
+}
+
+.auth-art__img {
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+}
+
+/* A slow camera push, not a bouncing object: the floor and the reflection are
+   in this image too, and drifting them independently would read as a glitch. */
+@keyframes auth-drift {
+  0%,
+  100% {
+    transform: translate(18%, 2.5%) scale(1.06);
+  }
+  50% {
+    transform: translate(17.7%, 2.2%) scale(1.085);
+  }
+}
+
+/* --- the sheen: one light crossing the crown ------------------------------ */
+
+.auth-art__sheen {
+  position: absolute;
+  left: 20%;
+  top: 48%;
+  height: 26%;
+  width: 21%;
+  background: linear-gradient(
+    100deg,
+    transparent 38%,
+    rgb(255 255 255 / 0.5) 50%,
+    rgb(255 246 235 / 0.28) 56%,
+    transparent 66%
+  );
+  background-size: 300% 100%;
+  background-position: 130% 0;
+  /*
+    The gradient only fades left-to-right, so without a mask the box's top and
+    bottom clip the band into a visible rectangle over the floor. The radial
+    mask feathers all four edges, which is what makes the light look like it is
+    on the stone rather than on a pane of glass in front of it.
+  */
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 30%, transparent 76%);
+  mask-image: radial-gradient(ellipse at center, #000 30%, transparent 76%);
+  will-change: background-position;
+  animation: auth-sheen 9s ease-in-out infinite;
+}
+
+/* The travel is squeezed into the first third of the cycle; the rest is the
+   pause that keeps it feeling like an occasional catch of light. */
+@keyframes auth-sheen {
+  0% {
+    background-position: 130% 0;
+  }
+  35%,
+  100% {
+    background-position: -130% 0;
+  }
+}
+
+/* --- the glints: three staggered twinkles --------------------------------- */
+
+.auth-art__glint {
+  position: absolute;
+  height: 88px;
+  width: 88px;
+  margin: -44px 0 0 -44px;
+  border-radius: 9999px;
+  opacity: 0;
+  background: radial-gradient(
+    closest-side,
+    rgb(255 255 255 / 0.95),
+    rgb(255 244 230 / 0.45) 42%,
+    transparent 72%
+  );
+  will-change: opacity, transform;
+  animation: auth-glint 7s ease-in-out infinite;
+}
+
+/* Each glint fires briefly, then waits out the rest of the cycle — three lights
+   catching at staggered moments, rather than a pulse in unison. */
+@keyframes auth-glint {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  7% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  20% {
+    opacity: 0;
+    transform: scale(1.3);
+  }
+}
+
+/* Placed over the crown's darker facets, where a white spark actually reads —
+   on the already-blown-out highlights it would be invisible. Coordinates are
+   stage-local, so they follow the framing transform. */
+.auth-art__glint--a {
+  left: 29%;
+  top: 58%;
+  animation-delay: 0s;
+}
+
+.auth-art__glint--b {
+  left: 34%;
+  top: 60.5%;
+  height: 68px;
+  width: 68px;
+  margin: -34px 0 0 -34px;
+  animation-delay: 2.4s;
+}
+
+.auth-art__glint--c {
+  left: 27%;
+  top: 55%;
+  height: 54px;
+  width: 54px;
+  margin: -27px 0 0 -27px;
+  animation-delay: 4.6s;
+}
+
+/* --- entrance: the page assembles rather than appearing ------------------- */
+
+@keyframes auth-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.auth-enter {
+  animation: auth-rise 0.75s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.auth-enter--1 {
+  animation-delay: 0.05s;
+}
+
+.auth-enter--2 {
+  animation-delay: 0.16s;
+}
+
+.auth-enter--3 {
+  animation-delay: 0.26s;
+}
+
+/* Someone who has asked their system to stop animating gets the framed still,
+   fully visible — `both` on the entrance would otherwise leave it at opacity 0. */
+@media (prefers-reduced-motion: reduce) {
+  /*
+    `.auth-art--panel .auth-art__stage` outranks a bare `.auth-art__stage`, so
+    the panel has to be named here or its drift survives the opt-out.
+  */
+  .auth-art__stage,
+  .auth-art--panel .auth-art__stage,
+  .auth-art__sheen,
+  .auth-art__glint {
+    animation: none;
+  }
+
+  .auth-art__glint {
+    opacity: 0;
+  }
+
+  .auth-art__sheen {
+    display: none;
+  }
+
+  .auth-enter {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * Dark mode for the two supplied assets.
+ *
+ * Both were authored for a light page: the render is a near-white studio scene,
+ * and the logo is black artwork on transparency. Rather than ask for a second
+ * set of files, dark mode transforms the ones we have — the logo inverts to
+ * white, and the render is dimmed so it reads as a dark room with a lit stone
+ * instead of a lightbox behind a dark card. Replace either rule the day a
+ * purpose-made dark asset exists.
+ */
+:root[data-theme='dark'] .brand-logo {
+  filter: invert(1) brightness(1.08);
+}
+
+:root[data-theme='dark'] .auth-art {
+  filter: brightness(0.2) contrast(1.25) saturate(0.95);
+  opacity: 0.9;
+}
+
+.auth-scope .ant-input,
+.auth-scope .ant-input-affix-wrapper {
+  height: 44px;
+  border-radius: 11px;
+  /*
+    The `supporting` role (14/1.5), matching the button and the card's copy — the
+    value someone types should not be smaller than the sentence explaining the
+    field. Both selectors carry it: the affix wrapper is what paints the box, but
+    the `.ant-input` nested inside it is what the text is actually set in, and it
+    does not inherit AntD's size.
+
+    Scoped to `.auth-scope` on purpose. The 13px operator size is right for the
+    dense screens behind the login, where a form can be forty fields long.
+  */
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* The affix wrapper IS the 52px box; the input nested inside it must not also
+   claim 52px, or the text sits below the vertical centre. */
+.auth-scope .ant-input-affix-wrapper > .ant-input {
+  height: auto;
+  border-radius: 0;
+}
+
+.auth-scope .ant-input-affix-wrapper > .ant-input-prefix {
+  margin-inline-end: 10px;
+  color: var(--fg-subtle);
+}
+
+/*
+  The action is cut to match the FIELDS on this screen, not the operator system:
+  same 44px box, same 11px corner. It was briefly a 9999px pill, which is the
+  thing worth not going back to — a pill is a different shape from anything else
+  in the app, whereas 11px is the same shape one size up.
+
+  Both values are declared right here next to the inputs they answer to, so the
+  three controls in this form can only be changed together.
+*/
+.auth-scope .ant-btn {
+  height: 44px;
+  border-radius: 11px;
+}
+
+/*
+  `Button variant="success"` — an approval action, the one place the app needs
+  a genuinely green button rather than the greyscale `primary`. No token
+  covers a solid button fill: `--status-success-fg` is tuned for text on a
+  subtle chip background, and in dark mode it is a pale green that would sit
+  behind white button text with poor contrast — the wrong value for this.
+  Scoped to `.btn-success` so the rule can never reach a button that did not
+  ask for it (antd-traps.md §5); `.ant-btn-primary` matches it at the same
+  specificity Ant Design's own primary colour is set at (antd-traps.md §4).
+*/
+.btn-success.ant-btn-primary {
+  background-color: #15803d;
+  border-color: #15803d;
+}
+/*
+  Hover has to match AntD's OWN hover selector, not just its base one.
+
+  AntD writes `.ant-btn-primary:not(:disabled):not(.ant-btn-disabled):hover` —
+  three classes and a pseudo-class. A rule at `.btn-success:hover:not(:disabled)`
+  is two classes and loses, so the green button turned the theme's black on
+  hover: our colour on rest, AntD's on hover. Matching the shape is the fix
+  (antd-traps.md §4).
+*/
+.btn-success.ant-btn-primary:not(:disabled):not(.ant-btn-disabled):hover {
+  background-color: #166534;
+  border-color: #166534;
+  color: #fff;
+}
+/*
+  Disabled, but still green.
+
+  Ant Design paints every disabled button the same neutral grey, which makes a
+  temporarily-blocked Approve look identical to a control the reviewer will
+  never have. Keeping the hue says "this is the approve button and it is not
+  ready yet"; the opacity says it cannot be pressed. Both classes are matched
+  because AntD sets `.ant-btn-disabled` as well as the `:disabled` attribute.
+*/
+/*
+  Outlined amber — "there is work here", not "this is a decision".
+
+  Scoped `.btn-warning.ant-btn-default` for the reason `.btn-success` is scoped
+  the way it is (antd-traps.md §4/§5): AntD emits its own rules at two classes
+  of specificity, so a single Tailwind utility on the element loses to them
+  silently. Matching its shape is what makes the colour actually apply.
+*/
+.btn-warning.ant-btn-default {
+  color: var(--status-warning-fg);
+  border-color: var(--status-warning-fg);
+  background-color: var(--status-warning-bg);
+}
+.btn-warning.ant-btn-default:not(:disabled):not(.ant-btn-disabled):hover {
+  color: var(--status-warning-fg);
+  border-color: var(--status-warning-fg);
+  background-color: var(--status-warning-bg);
+  filter: brightness(0.97);
+}
+
+.btn-success.ant-btn-primary:disabled,
+.btn-success.ant-btn-primary.ant-btn-disabled {
+  background-color: #15803d;
+  border-color: #15803d;
+  color: #fff;
+  opacity: 0.45;
+}
+
+@layer components {
+  /* 11px ALL-CAPS table-header label — the one place caps are allowed. */
+  .label-caps {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Chrome details the token layer cannot express (theming skill: components.md).
+   Kept minimal — anything expressible as a ConfigProvider token belongs there.
+   --------------------------------------------------------------------------- */
+
+/*
+  Column names read as headings, not captions: same size as the cells beneath
+  them (the `supporting` role, matched to the `cellFontSize` token) and heavier,
+  in sentence case rather than uppercase.
+
+  Only the type is here — colour, background and the split lines between cells
+  are all `Table` tokens in `antdTheme.ts`. AntD has no token for weight or
+  case, which is the whole reason this rule exists.
+*/
+.ant-table-thead > tr > th {
+  height: 38px;
+  font-size: 14px;
+  font-weight: 600;
+  /* A hair of tracking: the header is the one row set solid in semibold, and it
+     sets tighter than the regular-weight rows beneath it without this. */
+  letter-spacing: 0.01em;
+  text-transform: none;
+}
+
+/* A select is opened, not typed into — even the multiple variant, whose selector
+   AntD builds around a hidden input and therefore hands an I-beam by default. */
+.ant-select:not(.ant-select-disabled) .ant-select-selector {
+  cursor: pointer;
+}
+
+/*
+  The select arrow turns over when the menu opens. One mark rotating, rather than
+  a down-caret swapped for an up-caret — see the note beside `ARROW` in
+  `ui/Select`.
+*/
+.ant-select .ant-select-arrow {
+  transition: transform 150ms ease;
+}
+
+.ant-select-open .ant-select-arrow {
+  transform: rotate(180deg);
+}
+
+/* Sort carets: muted at rest, ink when active — a sortable column must look it. */
+.ant-table-column-sorter {
+  color: var(--fg-subtle);
+}
+.ant-table-column-sorter-up.active,
+.ant-table-column-sorter-down.active {
+  color: var(--fg);
+}
+
+/* ---------------------------------------------------------------------------
+   The table fills its card.
+
+   `scroll.y` gives AntD's body a MAX-height, not a height — so with three rows
+   in a tall card the body stops just under the last one, and the horizontal
+   scrollbar drawn on its bottom edge floats in the middle of the card instead of
+   sitting above the pagination bar.
+
+   Stretching the wrapper chain and letting the body flex fixes the scrollbar's
+   position without touching the scrolling itself: the body still scrolls, it is
+   just now as tall as the space it was given. The `max-height` AntD sets is the
+   same measurement, so the two agree rather than fight.
+   --------------------------------------------------------------------------- */
+.data-table,
+.data-table .ant-spin-nested-loading,
+.data-table .ant-spin-nested-loading > .ant-spin-container,
+.data-table .ant-table,
+.data-table .ant-table-container {
+  height: 100%;
+}
+
+.data-table .ant-table-container {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.data-table .ant-table-header {
+  flex: none;
+}
+
+.data-table .ant-table-body {
+  flex: 1;
+}
+
+/*
+  ...and when the list is empty, the placeholder row is the only row, so it takes
+  the whole of that height and its cell centres what is inside it. Without this
+  the empty state sits just under the header with the rest of the card blank
+  below — which reads as a row that failed to render rather than as the state of
+  the list.
+
+  The rule under it goes too: there is nothing below to be separated from, and a
+  line across the middle of an empty table looks like a boundary that means
+  something.
+
+  `:has(.ant-table-placeholder)` is load-bearing, not a flourish. Stretching the
+  inner table unconditionally stretched it when there WERE rows: a list of one
+  row became one row a full card tall, with its text stranded in the middle of
+  it. Only the empty table may fill the space, because only there is the single
+  row the state of the whole list rather than a record in it.
+*/
+.data-table .ant-table-body > table:has(.ant-table-placeholder) {
+  height: 100%;
+}
+
+.data-table .ant-table-placeholder > .ant-table-cell {
+  height: 100%;
+  border-bottom: none;
+  vertical-align: middle;
+}
+
+/*
+  The frozen column's leading edge. It is the one vertical rule in the body,
+  and it is not decoration: the column stops moving there while everything to
+  its left slides underneath, and without a line the rows appear to tear. Drawn
+  on the FIRST of the pinned cells, so it lands on the boundary rather than
+  between two pinned columns.
+
+  `--border` rather than the lighter row rule: this line separates two things
+  that scroll independently, which is a stronger break than one row from the
+  next.
+*/
+.ant-table-cell-fix-right-first,
+.ant-table-thead > tr > th.ant-table-cell-fix-right-first {
+  border-left: 1px solid var(--border);
+}
+
+/*
+  ...and the header's own short split bar goes, on the one cell that sits against
+  that edge. Two marks on one boundary — a full-height rule and a floating bar
+  4px to its left — read as a mistake rather than as emphasis.
+
+  `:has()` because the bar belongs to the cell BEFORE the frozen one, and there
+  is no previous-sibling selector.
+*/
+.ant-table-thead > tr > th:has(+ .ant-table-cell-fix-right-first)::before {
+  display: none;
+}
+
+/* Row rules are lighter than the header's, so the grid recedes and the rows read
+   as the unit. */
+.ant-table-tbody > tr > td {
+  border-bottom-color: var(--surface-hover);
+}
+
+/*
+  Zebra banding. Long rows are read across, and after four or five columns the
+  eye has nothing holding it to the row it started on — the band is what carries
+  it. `surface-subtle` is the quietest step that survives a laptop screen at an
+  angle.
+
+  One exclusion, deliberate:
+
+   - AntD's hover rule is more specific than this one, which is exactly right:
+     hover has to beat the stripe or every other row looks hovered already.
+*/
+.ant-table-tbody > tr.table-row-odd > td {
+  background: var(--zebra);
+}
+
+/*
+  Tooltips sit close to the text they annotate.
+
+  AntD gives the bubble `min-height: 32px` and 6px of vertical padding — sized
+  for a 14px label, not for the 10px one the token sets. A one-line tooltip came
+  out nearly three times the height of its own text, which is what made it read
+  as a panel rather than as a note. `min-height: 0` lets it shrink to its
+  content.
+
+  The padding is 4/10 rather than a square 6/8: at 10px type the box wants more
+  air across the ends of the line than above and below it, or the words look
+  jammed against the corners while the bubble still reads as tall.
+
+  Only the box. The type, colour and radius are `Tooltip` component tokens in
+  `antdTheme.ts`, where they travel with the theme.
+*/
+.ant-tooltip .ant-tooltip-inner {
+  min-height: 0;
+  padding: 4px 10px;
+}
+
+/* Modal mask dims the room; it does not black it out. */
+.ant-modal-mask,
+.ant-drawer-mask {
+  background: rgb(23 23 23 / 0.35);
+}
+
+/* 6px scrollbars, grey thumb. A dark chunky thumb is chrome shouting. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--fg-subtle);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Focus is always visible and always near-black — never the browser's blue. */
+:where(a, button, [role='button'], input, select, textarea):focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
+}
+
+/* AntD wraps Sider children in its own div; without this the pinned footer
+   (identity) never reaches the bottom and the menu cannot own the scroll. */
+.ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ---------------------------------------------------------------------------
+   The panel cut — the artwork as the left column's own ground, in the split
+   layout at `lg` and up.
+
+   No mask. The full variant feathers its left edge because it is a backdrop
+   floating over the wash and its own edge would show; here the artwork IS the
+   panel, so every edge is meant to run to the panel's border.
+
+   Aiming is a different problem too, and a harder one. The full variant can
+   promise the stone lands in the same place at any width because a full
+   viewport is always wider than the render's 1.50, so `cover` crops vertically
+   and image-x maps straight onto box-x. A half-width column is far narrower
+   than 1.50, so `cover` crops horizontally instead and the visible slice grows
+   with the window — the same `object-position` puts the crown at ~58% across a
+   720px panel and ~33% across a 1280px one.
+
+   That drift is accepted rather than fought: across every realistic width the
+   stone stays inside the panel's middle band, which is what the composition
+   actually needs. Pinning it exactly would mean a width-keyed transform, which
+   is a breakpoint per monitor.
+   --------------------------------------------------------------------------- */
+.auth-art--panel {
+  /*
+    A top feather, not the base rule's left one. The artwork no longer fills the
+    panel — it is a foot-anchored block the height of its own aspect ratio — so
+    the edge that needs hiding is the horizon where the render's white sky meets
+    the wash. The other three run to the panel's borders.
+  */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 22%);
+}
+
+.auth-art--panel .auth-art__stage {
+  /*
+    Its own keyframes, not the shared `auth-drift`. That animation hard-codes the
+    full variant's `translate(18%, …)`, and a running animation outranks a plain
+    declaration — so simply setting `transform` here did nothing at all: the
+    panel rendered at 18% and pulled a 107px strip of bare wash in down its left
+    edge. `.auth-art--band` sidesteps the same trap by killing the animation
+    outright; the panel is the hero image and keeps the motion instead.
+
+    No offset any more, and barely any zoom. The block is cut to the render's own
+    ratio, so `cover` fits it exactly and there is nothing to aim: any translate
+    would pull a bare edge in rather than move the stone within a crop. The 1.02
+    exists only to give the drift 2% of slack to breathe into.
+  */
+  /*
+    The resting value as well as the animated one. Under reduced motion the
+    animation is switched off and the element falls back to whatever `transform`
+    says — inherit the base rule's 18% there and the strip comes straight back
+    for exactly the users who opted out of the effect.
+  */
+  transform: scale(1.02);
+  animation: auth-drift-panel 16s ease-in-out infinite;
+}
+
+@keyframes auth-drift-panel {
+  0%,
+  100% {
+    transform: scale(1.02);
+  }
+  50% {
+    transform: scale(1.045);
+  }
+}
+
+.auth-art--panel .auth-art__img {
+  /* Centred, because at the render's own ratio there is no crop to bias. */
+  object-position: center;
+}
