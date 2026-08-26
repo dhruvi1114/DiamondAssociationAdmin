@@ -107,6 +107,14 @@ export const ENDPOINTS = {
     receiptPdf: (id: string) => `${API_BASE}/invoices/${id}/receipt/pdf`,
   },
 
+  /** Events and their price tiers (M7). */
+  EVENTS: {
+    LIST: `${API_BASE}/admin/events`,
+    detail: (id: string) => `${API_BASE}/admin/events/${id}`,
+    publish: (id: string) => `${API_BASE}/admin/events/${id}/publish`,
+    cancel: (id: string) => `${API_BASE}/admin/events/${id}/cancel`,
+  },
+
   /** Membership catalogue — categories, tiers, fees, document types (M2). */
   MASTERS: {
     CATEGORIES: `${API_BASE}/admin/membership-categories`,

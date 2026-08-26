@@ -113,6 +113,11 @@ const map: Record<string, StatusPresentation> = {
   'event.CANCELLED': { variant: 'danger', label: 'Cancelled' },
   'event.COMPLETED': { variant: 'neutral', label: 'Completed' },
 
+  // Who can see it — a separate domain from status because the two are
+  // independent: a members-only event can be draft, published or completed.
+  'eventVisibility.MEMBER_ONLY': { variant: 'info', label: 'Members only' },
+  'eventVisibility.PUBLIC': { variant: 'neutral', label: 'Public' },
+
   // --- Notification outbox ---------------------------------------------------
   'notification.QUEUED': { variant: 'info', label: 'Queued' },
   'notification.SENDING': { variant: 'info', label: 'Sending' },

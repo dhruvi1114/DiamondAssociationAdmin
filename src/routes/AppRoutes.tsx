@@ -16,6 +16,7 @@ import Forbidden from '@/pages/Forbidden';
 import Login from '@/pages/Login';
 import MemberDetail from '@/pages/members/MemberDetail';
 import NotFound from '@/pages/NotFound';
+import Events from '@/pages/events/Events';
 import Placeholder from '@/pages/Placeholder';
 import SystemSettings from '@/pages/settings/SystemSettings';
 import ServerError from '@/pages/ServerError';
@@ -279,6 +280,16 @@ export const AppRoutes = () => {
           }
         />
 
+        {/* M7 — events. */}
+        <Route
+          path="/events/*"
+          element={
+            <RequirePermission anyOf={['event.view']}>
+              <Events />
+            </RequirePermission>
+          }
+        />
+
         {NAV_GROUPS.flatMap((group) =>
           group.items
             .filter(
@@ -296,6 +307,7 @@ export const AppRoutes = () => {
                   '/settings/roles',
                   '/settings/workflow',
                   '/billing/invoices',
+                  '/events',
                 ].includes(item.path),
             )
             .map((item) => (
