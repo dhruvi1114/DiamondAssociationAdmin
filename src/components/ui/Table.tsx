@@ -449,7 +449,14 @@ export const DataTable = <T extends object>({
               {pageItems.map((item, index) =>
                 item === 'ellipsis' ? (
                   <span
-                    // eslint-disable-next-line react/no-array-index-key
+                    /*
+                      An index key, deliberately. The ellipsis is a gap marker,
+                      not a record — it has no identity of its own, and the only
+                      thing distinguishing the two that can appear is where they
+                      sit. `react/no-array-index-key` is not configured in this
+                      project, so the disable directive that used to sit here was
+                      itself the lint error.
+                    */
                     key={`ellipsis-${index}`}
                     className="grid h-7 w-7 place-items-center text-supporting text-fg-subtle"
                   >

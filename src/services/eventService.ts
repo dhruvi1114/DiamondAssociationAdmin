@@ -27,18 +27,31 @@ export interface EventPriceTier {
   display_order?: number;
 }
 
-/** A row in the admin list. Narrower than the detail on purpose. */
+/** A row in the admin list. */
 export interface EventRow {
   id: string;
   slug: string;
   title: string;
+  /** The `EventTypes` master row, if the event was classified. */
+  event_type_id: string | null;
+  /** Its name, resolved by the API — an id in a column tells nobody anything. */
+  event_type: string | null;
+  description: string | null;
   start_at: string;
   end_at: string;
+  venue_name: string | null;
   city: string | null;
+  registration_closes_at: string | null;
+  requires_approval: boolean;
   visibility: number;
   status: number;
   capacity: number | null;
   seats_taken: number;
+  createdAt: string;
+  updatedAt: string;
+  /** Staff names, resolved by the API — an id in a column tells nobody anything. */
+  created_by: string | null;
+  updated_by: string | null;
   tier_count: string;
 }
 
@@ -126,6 +139,14 @@ export interface RegistrationRow {
   registered_at: string;
   expires_at: string | null;
   booked_by: string | null;
+  /** The company's own email and phone, or the guest's. */
+  contact_email: string | null;
+  contact_phone: string | null;
+  city: string | null;
+  approved_at: string | null;
+  approved_by: string | null;
+  rejected_at: string | null;
+  rejected_by: string | null;
   invoice_number: string | null;
 }
 
@@ -159,6 +180,13 @@ export interface PaymentSubmissionRow {
   rejection_reason: string | null;
   createdAt: string;
   paid_by: string | null;
+  /** The person who filed the claim, as distinct from the company it is billed to. */
+  claimed_by: string | null;
+  /** The staff account that decided, split by which way they decided. */
+  verified_by: string | null;
+  verified_at: string | null;
+  rejected_by: string | null;
+  rejected_at: string | null;
   event_title: string | null;
   registration_code: string | null;
 }
@@ -166,8 +194,13 @@ export interface PaymentSubmissionRow {
 export interface QueueParams {
   page?: number;
   limit?: number;
+  /** Comma-separated codes — "0,2" is "either of these". Empty means any. */
   status?: string;
+  /** Payment queue only. Comma-separated `PAYMENT_METHOD` codes. */
+  method?: string;
   event_id?: string;
+  /** Matched server-side across the codes, names and contacts on the row. */
+  search?: string;
 }
 
 /**

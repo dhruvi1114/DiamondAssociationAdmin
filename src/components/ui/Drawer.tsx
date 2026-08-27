@@ -21,7 +21,13 @@ export const Drawer = ({ width = 560, footer, children, styles, ...rest }: Drawe
     {...rest}
   >
     <div className="flex h-full flex-col">
-      <div className="flex-1">{children}</div>
+      {/*
+        `min-h-0` as well as `flex-1`: a flex child defaults to min-height:auto,
+        which means it refuses to shrink below its content. A table inside then
+        pushes the drawer's own scroll instead of scrolling its body, and its
+        footer walks off the bottom.
+      */}
+      <div className="flex min-h-0 flex-1 flex-col">{children}</div>
       {footer ? (
         <div className="mt-4 flex justify-end gap-2 border-t border-border pt-4">{footer}</div>
       ) : null}

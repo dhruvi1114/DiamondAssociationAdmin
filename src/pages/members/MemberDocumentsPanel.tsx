@@ -60,7 +60,7 @@ export const MemberDocumentsPanel = ({ memberId, onChanged }: MemberDocumentsPan
   const { can } = usePermissions();
   // Unused while verify / reject are commented out of the row actions below,
   // and kept because the dialog they open still exists.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
   const canVerify = can('document.verify');
 
   const [documents, setDocuments] = useState<MemberDocument[]>([]);
@@ -111,7 +111,6 @@ export const MemberDocumentsPanel = ({ memberId, onChanged }: MemberDocumentsPan
     }
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const open = (document: MemberDocument, decision: Decision) => {
     setTarget({ document, decision });
     setRemarks('');

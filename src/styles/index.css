@@ -821,3 +821,26 @@
   /* Centred, because at the render's own ratio there is no crop to bias. */
   object-position: center;
 }
+
+/*
+  The event drawer packs a lot of fields, and Ant Design's default 24px bottom
+  margin on every Form.Item turns that into a form the operator scrolls three
+  times to read. 16px keeps it short without the rows running together — 12px
+  was tried first and read as congested, because the label of the next row sits
+  right under the input of the last.
+
+  Scoped to this form rather than changed globally: the other drawers hold six
+  or seven fields, where the roomier default reads better.
+*/
+.event-form .ant-form-item {
+  margin-bottom: 16px;
+}
+
+/*
+  The toggle block and the pricing list are sections, not fields, so they get a
+  section's worth of air above them. Without it "Registrations Need My Approval"
+  sat directly under the last price row and read as part of it.
+*/
+.event-form .event-form-section {
+  margin-top: 8px;
+}

@@ -1,4 +1,5 @@
 import { Tooltip } from 'antd';
+import Highlight from './Highlight';
 import NotAvailable from './NotAvailable';
 
 export interface TextCellProps {
@@ -10,6 +11,16 @@ export interface TextCellProps {
   width?: number;
   /** Overrides "N/A" where the absence has a better name. */
   empty?: string;
+  /**
+   * What the reader searched for. Blank leaves the text alone.
+   *
+   * Here rather than in a second component: a highlighted cell still has to
+   * truncate, still needs the tooltip carrying the full text, and still has to
+   * fall back to "N/A" when empty. A `<Highlight>` dropped into a cell on its
+   * own loses all three, and the columns that can be searched would then look
+   * different from the columns that cannot.
+   */
+  query?: string;
 }
 
 /**
@@ -30,7 +41,7 @@ export interface TextCellProps {
  * `max-content` — both true here — and under `auto` a column `width` is only a
  * minimum, so a long value widens its column instead of being clipped by it.
  */
-export const TextCell = ({ value, width = 220, empty }: TextCellProps) => {
+export const TextCell = ({ value, width = 220, empty, query }: TextCellProps) => {
   const text = value?.trim();
 
   if (!text) {
@@ -40,7 +51,7 @@ export const TextCell = ({ value, width = 220, empty }: TextCellProps) => {
   return (
     <Tooltip title={text}>
       <span className="block truncate align-middle text-supporting" style={{ maxWidth: width }}>
-        {text}
+        {query ? <Highlight text={text} query={query} /> : text}
       </span>
     </Tooltip>
   );

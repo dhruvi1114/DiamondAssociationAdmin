@@ -52,7 +52,7 @@ export const ProfileTab = ({ member, onChanged }: ProfileTabProps) => {
   const { can } = usePermissions();
   // Unused while the Edit profile action is commented out; kept because the
   // drawer it gated is still here.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
   const canManage = can('member.manage');
   const canRecordPayment = can('payment.record');
   const payment = useConfirm<MemberInvoice>();
@@ -114,7 +114,6 @@ export const ProfileTab = ({ member, onChanged }: ProfileTabProps) => {
     }
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const openEdit = () => {
     setSaveError(null);
     editForm.setFieldsValue({
@@ -134,7 +133,7 @@ export const ProfileTab = ({ member, onChanged }: ProfileTabProps) => {
 
   // Unused while the "Change business nature" button is commented out above,
   // and kept for exactly that reason — the drawer it fills still exists.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
   const openClassChange = () => {
     setSaveError(null);
     classForm.resetFields();

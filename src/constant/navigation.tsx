@@ -270,6 +270,14 @@ export const NAV_GROUPS: NavGroup[] = [
         module: 'M5',
       },
       {
+        key: 'event-types',
+        label: 'Event Types',
+        path: '/masters/event-types',
+        icon: CalendarDays,
+        anyOf: ['category.view'],
+        module: 'M7',
+      },
+      {
         key: 'locations',
         label: 'Locations',
         path: '/masters/locations',

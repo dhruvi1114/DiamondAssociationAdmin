@@ -9,6 +9,7 @@ import Invoices from '@/pages/billing/Invoices';
 import Dashboard from '@/pages/Dashboard';
 import Categories from '@/pages/masters/Categories';
 import CompanyTypes from '@/pages/masters/CompanyTypes';
+import EventTypes from '@/pages/masters/EventTypes';
 import DocumentTypes from '@/pages/masters/DocumentTypes';
 import Fees from '@/pages/masters/Fees';
 import Locations from '@/pages/masters/Locations';
@@ -185,6 +186,14 @@ export const AppRoutes = () => {
           }
         />
         <Route
+          path="/masters/event-types/*"
+          element={
+            <RequirePermission anyOf={['category.view']}>
+              <EventTypes />
+            </RequirePermission>
+          }
+        />
+        <Route
           path="/masters/locations/*"
           element={
             <RequirePermission anyOf={['category.view']}>
@@ -319,6 +328,7 @@ export const AppRoutes = () => {
                   '/masters/fees',
                   '/masters/document-types',
                   '/masters/company-types',
+                  '/masters/event-types',
                   '/masters/locations',
                   '/members',
                   '/applications',

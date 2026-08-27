@@ -130,6 +130,19 @@ export interface CompanyType {
   updatedAt: string;
 }
 
+/** A kind of event — Conference, Seminar, Exhibition (M7). */
+export interface EventType {
+  id: string;
+  code: string;
+  name: string;
+  display_order: number;
+  is_active: boolean;
+  /** How many events carry this type. Non-zero means it cannot be deleted. */
+  event_count?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Country {
   id: string;
   iso_code: string;
@@ -211,6 +224,14 @@ export const MastersService = {
   updateCompanyType: (id: string, body: Partial<CompanyType>) =>
     BaseService.patch<CompanyType>(ENDPOINTS.MASTERS.companyType(id), body),
   deleteCompanyType: (id: string) => BaseService.delete(ENDPOINTS.MASTERS.companyType(id)),
+
+  listEventTypes: (params?: ListParams): Promise<ApiResult<EventType[]>> =>
+    BaseService.get(`${ENDPOINTS.MASTERS.EVENT_TYPES}${query(params)}`),
+  createEventType: (body: Partial<EventType>) =>
+    BaseService.post<EventType>(ENDPOINTS.MASTERS.EVENT_TYPES, body),
+  updateEventType: (id: string, body: Partial<EventType>) =>
+    BaseService.patch<EventType>(ENDPOINTS.MASTERS.eventType(id), body),
+  deleteEventType: (id: string) => BaseService.delete(ENDPOINTS.MASTERS.eventType(id)),
 
   listCountries: (params?: ListParams): Promise<ApiResult<Country[]>> =>
     BaseService.get(`${ENDPOINTS.MASTERS.COUNTRIES}${query(params)}`),

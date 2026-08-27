@@ -134,6 +134,9 @@ export const ENDPOINTS = {
     FEE_RESOLVE: `${API_BASE}/admin/fee-structures/resolve`,
     COMPANY_TYPES: `${API_BASE}/admin/company-types`,
     companyType: (id: string) => `${API_BASE}/admin/company-types/${id}`,
+    /* M7 — the kinds of event the association runs. Staff-maintained. */
+    EVENT_TYPES: `${API_BASE}/admin/event-types`,
+    eventType: (id: string) => `${API_BASE}/admin/event-types/${id}`,
     COUNTRIES: `${API_BASE}/admin/countries`,
     country: (id: string) => `${API_BASE}/admin/countries/${id}`,
     STATES: `${API_BASE}/admin/states`,
