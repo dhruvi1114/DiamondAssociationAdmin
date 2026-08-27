@@ -17,6 +17,8 @@ import Login from '@/pages/Login';
 import MemberDetail from '@/pages/members/MemberDetail';
 import NotFound from '@/pages/NotFound';
 import Events from '@/pages/events/Events';
+import Registrations from '@/pages/events/Registrations';
+import PaymentQueue from '@/pages/billing/PaymentQueue';
 import Placeholder from '@/pages/Placeholder';
 import SystemSettings from '@/pages/settings/SystemSettings';
 import ServerError from '@/pages/ServerError';
@@ -280,12 +282,28 @@ export const AppRoutes = () => {
           }
         />
 
-        {/* M7 — events. */}
+        {/* M7 — events, the bookings queue, and the payment claims queue. */}
         <Route
           path="/events/*"
           element={
             <RequirePermission anyOf={['event.view']}>
               <Events />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/registrations/*"
+          element={
+            <RequirePermission anyOf={['event.view']}>
+              <Registrations />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/billing/payments/*"
+          element={
+            <RequirePermission anyOf={['payment.view']}>
+              <PaymentQueue />
             </RequirePermission>
           }
         />
@@ -308,6 +326,8 @@ export const AppRoutes = () => {
                   '/settings/workflow',
                   '/billing/invoices',
                   '/events',
+                  '/registrations',
+                  '/billing/payments',
                 ].includes(item.path),
             )
             .map((item) => (

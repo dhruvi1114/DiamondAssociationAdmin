@@ -158,7 +158,17 @@ export const DecisionDialog = ({
 
   const copy: Record<
     DecisionKind,
-    { title: string; description: string; confirmLabel: string; danger: boolean }
+    {
+      title: string;
+      /**
+       * Optional: the send-back case deliberately has none, because the sentence
+       * would only repeat what the Actions card already says. Typed as required,
+       * it forced either a cast or copy nobody asked for.
+       */
+      description?: string;
+      confirmLabel: string;
+      danger: boolean;
+    }
   > = {
     approve: {
       title: isFinalStage ? `Approve and activate ${company}?` : `Clear this stage for ${company}?`,

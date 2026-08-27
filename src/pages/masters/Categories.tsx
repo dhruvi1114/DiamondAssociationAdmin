@@ -1132,3 +1132,11 @@ export const Categories = () => {
 };
 
 export default Categories;
+
+/*
+  Parked, not dead. The symbol(s) below are kept deliberately — see the note
+  beside each one — and `noUnusedLocals` would otherwise force their deletion.
+  Referencing them here is what keeps the build green without throwing away work
+  that is waiting on a client decision.
+*/
+void TiersTab;

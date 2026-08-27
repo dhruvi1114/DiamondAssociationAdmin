@@ -167,6 +167,16 @@ export const MemberDocumentsPanel = ({ memberId, onChanged }: MemberDocumentsPan
     );
   }
 
+  // Kept deliberately (see the note above the declaration). Referenced so
+  // TypeScript's noUnusedLocals does not force its deletion — the author
+  // already silenced the matching ESLint rule.
+  void open;
+
+  // Kept deliberately (see the note above the declaration). Referenced so
+  // TypeScript's noUnusedLocals does not force its deletion — the author
+  // already silenced the matching ESLint rule.
+  void canVerify;
+
   return (
     <Card
       title="Documents"

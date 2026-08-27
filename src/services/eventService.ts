@@ -1,5 +1,5 @@
 import { ENDPOINTS } from '@/constant/endpoints';
-import { BaseService, type ApiResult } from '@/services/BaseService';
+import { BaseService, http, type ApiResult } from '@/services/BaseService';
 
 /**
  * Events API (M7). Mirrors `backend/src/modules/event` exactly.
@@ -78,7 +78,7 @@ export interface EventListParams {
   visibility?: string;
 }
 
-const query = (params?: EventListParams): string => {
+const query = (params?: EventListParams | QueueParams): string => {
   if (!params) return '';
 
   const search = new URLSearchParams();
@@ -92,6 +92,108 @@ const query = (params?: EventListParams): string => {
   return qs ? `?${qs}` : '';
 };
 
+/** 0…7, matching `registration.constants.ts` on the server. */
+export const REGISTRATION_STATUS = {
+  PENDING_APPROVAL: 0,
+  PENDING_PAYMENT: 1,
+  PAYMENT_UNDER_VERIFICATION: 2,
+  CONFIRMED: 3,
+  EXPIRED: 4,
+  CANCELLED: 5,
+  REJECTED: 6,
+  REFUNDED: 7,
+} as const;
+
+export const SUBMISSION_STATUS = { PENDING: 0, VERIFIED: 1, REJECTED: 2 } as const;
+
+export const SUBMISSION_METHOD: Record<number, string> = {
+  0: 'Bank transfer',
+  1: 'UPI',
+  2: 'Cheque',
+  3: 'Cash',
+};
+
+/** A booking, as the admin queues show it. */
+export interface RegistrationRow {
+  id: string;
+  registration_code: string;
+  event_id: string;
+  event_title: string;
+  registrant_type: number;
+  status: number;
+  attendee_count: number;
+  total_amount: string;
+  registered_at: string;
+  expires_at: string | null;
+  booked_by: string | null;
+  invoice_number: string | null;
+}
+
+/** One person on a booking — the "who is going to attend" row. */
+export interface AttendeeRow {
+  attendee_code: string;
+  full_name: string;
+  designation: string | null;
+  email: string | null;
+  phone: string | null;
+  unit_price: string;
+  food_preference: number | null;
+  special_requirement: string | null;
+  registration_code: string;
+  status: number;
+  booked_by: string | null;
+  registrant_type: number;
+}
+
+/** A claim that money was sent, awaiting a decision. */
+export interface PaymentSubmissionRow {
+  id: string;
+  invoice_id: string;
+  invoice_number: string;
+  method: number;
+  reference_no: string;
+  amount: string;
+  paid_on: string;
+  proof_path: string | null;
+  status: number;
+  rejection_reason: string | null;
+  createdAt: string;
+  paid_by: string | null;
+  event_title: string | null;
+  registration_code: string | null;
+}
+
+export interface QueueParams {
+  page?: number;
+  limit?: number;
+  status?: string;
+  event_id?: string;
+}
+
+/**
+ * Auth is a bearer token, so a plain link to the export would 401 — the browser
+ * has no way to attach it. Fetch as a blob, then hand over a save.
+ *
+ * The filename comes from the server's `Content-Disposition` where it sends one,
+ * because the server is what knows the event's title and the date it ran.
+ */
+const downloadFile = async (url: string, fallbackName: string): Promise<void> => {
+  const response = await http.get<Blob>(url, { responseType: 'blob' });
+  const disposition = String(response.headers['content-disposition'] ?? '');
+  const match = /filename="?([^"]+)"?/.exec(disposition);
+
+  const objectUrl = URL.createObjectURL(response.data);
+  const anchor = document.createElement('a');
+
+  anchor.href = objectUrl;
+  anchor.download = match?.[1] ?? fallbackName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+};
+
 export const EventService = {
   list: (params?: EventListParams): Promise<ApiResult<{ rows: EventRow[] }>> =>
     BaseService.get(`${ENDPOINTS.EVENTS.LIST}${query(params)}`),
@@ -103,6 +205,28 @@ export const EventService = {
   remove: (id: string) => BaseService.delete(ENDPOINTS.EVENTS.detail(id)),
   publish: (id: string) => BaseService.post<PublishResult>(ENDPOINTS.EVENTS.publish(id), {}),
   cancel: (id: string, reason: string) => BaseService.post(ENDPOINTS.EVENTS.cancel(id), { reason }),
+
+  listRegistrations: (params?: QueueParams): Promise<ApiResult<{ rows: RegistrationRow[] }>> =>
+    BaseService.get(`${ENDPOINTS.EVENTS.REGISTRATIONS}${query(params)}`),
+  approveRegistration: (id: string) => BaseService.post(ENDPOINTS.EVENTS.approve(id), {}),
+  rejectRegistration: (id: string, reason: string) =>
+    BaseService.post(ENDPOINTS.EVENTS.reject(id), { reason }),
+
+  listAttendees: (
+    eventId: string,
+    params?: QueueParams,
+  ): Promise<ApiResult<{ rows: AttendeeRow[] }>> =>
+    BaseService.get(`${ENDPOINTS.EVENTS.attendees(eventId)}${query(params)}`),
+  downloadAttendees: (eventId: string) =>
+    downloadFile(ENDPOINTS.EVENTS.attendeesExport(eventId), 'attendees.xlsx'),
+
+  listPaymentSubmissions: (
+    params?: QueueParams,
+  ): Promise<ApiResult<{ rows: PaymentSubmissionRow[] }>> =>
+    BaseService.get(`${ENDPOINTS.EVENTS.PAYMENT_SUBMISSIONS}${query(params)}`),
+  verifyPayment: (id: string) => BaseService.post(ENDPOINTS.EVENTS.verifyPayment(id), {}),
+  rejectPayment: (id: string, reason: string) =>
+    BaseService.post(ENDPOINTS.EVENTS.rejectPayment(id), { reason }),
 };
 
 export default EventService;

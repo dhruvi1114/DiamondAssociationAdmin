@@ -206,6 +206,21 @@ export const ProfileTab = ({ member, onChanged }: ProfileTabProps) => {
     }
   };
 
+  // Kept deliberately (see the note above the declaration). Referenced so
+  // TypeScript's noUnusedLocals does not force its deletion — the author
+  // already silenced the matching ESLint rule.
+  void openClassChange;
+
+  // Kept deliberately (see the note above the declaration). Referenced so
+  // TypeScript's noUnusedLocals does not force its deletion — the author
+  // already silenced the matching ESLint rule.
+  void openEdit;
+
+  // Kept deliberately (see the note above the declaration). Referenced so
+  // TypeScript's noUnusedLocals does not force its deletion — the author
+  // already silenced the matching ESLint rule.
+  void canManage;
+
   return (
     <div className="flex flex-col gap-4">
       <Card>

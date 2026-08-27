@@ -118,6 +118,24 @@ const map: Record<string, StatusPresentation> = {
   'eventVisibility.MEMBER_ONLY': { variant: 'info', label: 'Members only' },
   'eventVisibility.PUBLIC': { variant: 'neutral', label: 'Public' },
 
+  // A booking's state. Labels say what is true for the booker, not what the
+  // column stores: "Seats held" is the one where somebody owes money, and
+  // "Seats released" says the outcome rather than the mechanism.
+  'eventRegistration.PENDING_APPROVAL': { variant: 'warning', label: 'Awaiting approval' },
+  'eventRegistration.PENDING_PAYMENT': { variant: 'info', label: 'Seats held — unpaid' },
+  'eventRegistration.PAYMENT_UNDER_VERIFICATION': { variant: 'warning', label: 'Checking payment' },
+  'eventRegistration.CONFIRMED': { variant: 'success', label: 'Confirmed' },
+  'eventRegistration.EXPIRED': { variant: 'neutral', label: 'Seats released' },
+  'eventRegistration.CANCELLED': { variant: 'neutral', label: 'Cancelled' },
+  'eventRegistration.REJECTED': { variant: 'danger', label: 'Not accepted' },
+  'eventRegistration.REFUNDED': { variant: 'neutral', label: 'Refunded' },
+
+  // A payment claim. "Awaiting check" rather than "Pending", because pending
+  // does not say who is holding it up — this queue is the association's work.
+  'paymentSubmission.PENDING': { variant: 'warning', label: 'Awaiting check' },
+  'paymentSubmission.VERIFIED': { variant: 'success', label: 'Verified' },
+  'paymentSubmission.REJECTED': { variant: 'danger', label: 'Not traced' },
+
   // --- Notification outbox ---------------------------------------------------
   'notification.QUEUED': { variant: 'info', label: 'Queued' },
   'notification.SENDING': { variant: 'info', label: 'Sending' },

@@ -261,6 +261,16 @@ export const Fees = () => {
     (filters.effectiveFrom || filters.effectiveTo ? 1 : 0) +
     (filters.createdFrom || filters.createdTo ? 1 : 0);
 
+  // Kept deliberately (see the note above the declaration). Referenced so
+  // TypeScript's noUnusedLocals does not force its deletion — the author
+  // already silenced the matching ESLint rule.
+  void tiersForCategory;
+
+  // Kept deliberately (see the note above the declaration). Referenced so
+  // TypeScript's noUnusedLocals does not force its deletion — the author
+  // already silenced the matching ESLint rule.
+  void categories;
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/*
@@ -701,3 +711,10 @@ export const Fees = () => {
 };
 
 export default Fees;
+
+/*
+  `Highlight` is imported for the two commented-out cell renderers above (the
+  category and tier columns). Kept with them rather than removed, so restoring
+  those columns is a matter of un-commenting rather than remembering an import.
+*/
+void Highlight;

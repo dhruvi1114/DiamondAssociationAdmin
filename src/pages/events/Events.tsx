@@ -1,4 +1,4 @@
-import { Ban, Pencil, Rocket, Trash2 } from 'lucide-react';
+import { Ban, Pencil, Rocket, Trash2, Users } from 'lucide-react';
 import { DatePicker, Form, Input, Switch } from 'antd';
 import dayjs from 'dayjs';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -27,6 +27,7 @@ import {
 } from '@/components/ui';
 import { useConfirm } from '@/hooks/useConfirm';
 import { usePermissions } from '@/hooks/usePermissions';
+import AttendeesDrawer from '@/pages/events/AttendeesDrawer';
 import { PriceTierEditor } from '@/pages/events/PriceTierEditor';
 import { tiersFromApi, tiersToApi, type TierValue } from '@/pages/events/priceTiers';
 import EventService, {
@@ -50,6 +51,32 @@ interface ApiError {
   message: string;
   requestId?: string;
 }
+
+/**
+ * Server field path → the form field that owns it.
+ *
+ * Most match by name. The exceptions are the two fields the form combines: the
+ * date range is one control called `when` but two columns on the wire, and a
+ * price tier's message arrives against `price_tiers.0.ends_on` rather than the
+ * list itself.
+ */
+const formFieldFor = (serverPath: string): (string | number)[] => {
+  if (serverPath === 'start_at' || serverPath === 'end_at') return ['when'];
+
+  const tier = /^price_tiers\.(\d+)\.(.+)$/.exec(serverPath);
+
+  if (tier) {
+    const index = Number(tier[1]);
+    const column = tier[2];
+
+    // starts_on / ends_on are one RangePicker in the form.
+    if (column === 'starts_on' || column === 'ends_on') return ['price_tiers', index, 'range'];
+
+    return ['price_tiers', index, column];
+  }
+
+  return serverPath.split('.').map((part) => (/^\d+$/.test(part) ? Number(part) : part));
+};
 
 const asError = (err: unknown): ApiError => {
   const e = err as { message?: string; requestId?: string };
@@ -93,6 +120,8 @@ const Events = () => {
   const [editing, setEditing] = useState<EventDetail | null>(null);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
+
+  const [attendeesOf, setAttendeesOf] = useState<EventRow | null>(null);
 
   const publish = useConfirm<EventRow>();
   const cancel = useConfirm<EventRow>();
@@ -227,7 +256,30 @@ const Events = () => {
       setOpen(false);
       await load();
     } catch (err) {
-      toast.error(asError(err).message);
+      /*
+        The API answers a 422 with a map of field → message. Showing only the
+        generic sentence leaves the operator staring at a long form with nothing
+        marked, hunting for what the server already told us — which is exactly
+        what happened with "registration closes after the event starts".
+      */
+      const error = asError(err);
+      const fields = (err as { fields?: Record<string, string> }).fields;
+
+      if (fields && Object.keys(fields).length > 0) {
+        const entries = Object.entries(fields);
+
+        form.setFields(
+          entries.map(([path, message]) => ({ name: formFieldFor(path), errors: [message] })),
+        );
+
+        // Take them to the first one. On a form this tall the offending field is
+        // usually scrolled out of sight.
+        form.scrollToField(formFieldFor(entries[0]![0]), { behavior: 'smooth', block: 'center' });
+
+        toast.error(entries[0]![1]);
+      } else {
+        toast.error(error.message);
+      }
     } finally {
       setSaving(false);
     }
@@ -375,6 +427,18 @@ const Events = () => {
                 <RowActions
                   actions={[
                     {
+                      /*
+                        First, because on a live event it is the thing an admin
+                        opens this row for — the list is what becomes badges, a
+                        catering count and the door list.
+                      */
+                      key: 'attendees',
+                      icon: <Users size={16} strokeWidth={1.5} />,
+                      label: 'Who is attending',
+                      hidden: row.status === EVENT_STATUS.DRAFT,
+                      onClick: () => setAttendeesOf(row),
+                    },
+                    {
                       key: 'edit',
                       icon: <Pencil size={16} strokeWidth={1.5} />,
                       label: 'Edit event',
@@ -411,6 +475,8 @@ const Events = () => {
           ]}
         />
       </Card>
+
+      <AttendeesDrawer event={attendeesOf} onClose={() => setAttendeesOf(null)} />
 
       <FormDrawer
         open={open}
@@ -498,34 +564,53 @@ const Events = () => {
 
           <PriceTierEditor />
 
-          <div className="mt-4 flex flex-col gap-3">
-            <Form.Item name="requires_approval" valuePropName="checked" className="mb-0">
-              <Switch checkedChildren="On" unCheckedChildren="Off" />
-            </Form.Item>
-            <FieldLabel
-              label="Registrations need my approval before payment"
-              help="Off for open events: people register and pay straight away. On for an AGM or a vetted delegation: the request reaches you first, and no invoice exists until you approve it — so rejecting costs nothing to reverse."
-            />
+          <div className="mt-4 flex flex-col gap-4">
+            {/*
+              Switch beside its label, not above it. A Form.Item with no label
+              renders the control on its own line and leaves the sentence
+              orphaned underneath, which reads as a stray toggle belonging to
+              nothing.
+            */}
+            <div className="flex items-center gap-3">
+              <Form.Item name="requires_approval" valuePropName="checked" className="mb-0">
+                <Switch />
+              </Form.Item>
+              <FieldLabel
+                label="Registrations need my approval before payment"
+                help="Off for open events: people register and pay straight away. On for an AGM or a vetted delegation: the request reaches you first, and no invoice exists until you approve it — so rejecting costs nothing to reverse."
+              />
+            </div>
 
-            <FieldLabel
-              label="Collect From Each Delegate"
-              help="Only what this event actually needs. A one-hour members' meeting needs none of these; a two-day expo needs all three."
-            />
-            <div className="flex gap-6">
-              <Form.Item
-                name="collect_food_preference"
-                valuePropName="checked"
-                initialValue
-                label="Food preference"
-              >
-                <Switch size="small" />
-              </Form.Item>
-              <Form.Item name="collect_photo" valuePropName="checked" label="Photo for badge">
-                <Switch size="small" />
-              </Form.Item>
-              <Form.Item name="collect_gov_id" valuePropName="checked" label="Government ID">
-                <Switch size="small" />
-              </Form.Item>
+            <div className="flex flex-col gap-2">
+              <FieldLabel
+                label="Collect From Each Delegate"
+                help="Only what this event actually needs. A one-hour members' meeting needs none of these; a two-day expo needs all three."
+              />
+              <div className="flex flex-wrap gap-6">
+                <div className="flex items-center gap-2">
+                  <Form.Item
+                    name="collect_food_preference"
+                    valuePropName="checked"
+                    initialValue={true}
+                    className="mb-0"
+                  >
+                    <Switch size="small" />
+                  </Form.Item>
+                  <span className="text-supporting">Food preference</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Form.Item name="collect_photo" valuePropName="checked" className="mb-0">
+                    <Switch size="small" />
+                  </Form.Item>
+                  <span className="text-supporting">Photo for badge</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Form.Item name="collect_gov_id" valuePropName="checked" className="mb-0">
+                    <Switch size="small" />
+                  </Form.Item>
+                  <span className="text-supporting">Government ID</span>
+                </div>
+              </div>
             </div>
           </div>
         </Form>

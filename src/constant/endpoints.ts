@@ -113,6 +113,14 @@ export const ENDPOINTS = {
     detail: (id: string) => `${API_BASE}/admin/events/${id}`,
     publish: (id: string) => `${API_BASE}/admin/events/${id}/publish`,
     cancel: (id: string) => `${API_BASE}/admin/events/${id}/cancel`,
+    attendees: (id: string) => `${API_BASE}/admin/events/${id}/attendees`,
+    attendeesExport: (id: string) => `${API_BASE}/admin/events/${id}/attendees/export`,
+    REGISTRATIONS: `${API_BASE}/admin/event-registrations`,
+    approve: (id: string) => `${API_BASE}/admin/event-registrations/${id}/approve`,
+    reject: (id: string) => `${API_BASE}/admin/event-registrations/${id}/reject`,
+    PAYMENT_SUBMISSIONS: `${API_BASE}/admin/payment-submissions`,
+    verifyPayment: (id: string) => `${API_BASE}/admin/payment-submissions/${id}/verify`,
+    rejectPayment: (id: string) => `${API_BASE}/admin/payment-submissions/${id}/reject`,
   },
 
   /** Membership catalogue — categories, tiers, fees, document types (M2). */

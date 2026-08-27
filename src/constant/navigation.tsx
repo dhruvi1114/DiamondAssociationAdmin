@@ -1,4 +1,5 @@
 import {
+  ClipboardCheck,
   CalendarDays,
   ChartColumn,
   CircleDollarSign,
@@ -195,6 +196,14 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Events',
         path: '/events',
         icon: CalendarDays,
+        anyOf: ['event.view'],
+        module: 'M7',
+      },
+      {
+        key: 'registrations',
+        label: 'Registrations',
+        path: '/registrations',
+        icon: ClipboardCheck,
         anyOf: ['event.view'],
         module: 'M7',
       },
