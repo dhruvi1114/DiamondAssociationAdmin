@@ -187,6 +187,42 @@ export interface RegistrationDetail {
   /** The member login's own address. Shown only when it differs from the booking's. */
   account_email: string | null;
   account_phone: string | null;
+  /**
+   * The company's own record as it stands TODAY — not the frozen billing
+   * snapshot beside it. Those answer different questions: the snapshot says what
+   * the invoice was raised against, this says who the association is dealing
+   * with now. All null on a guest booking, which has no company record.
+   */
+  company_legal_name: string | null;
+  company_status: string | null;
+  company_type: string | null;
+  company_category: string | null;
+  company_gstin_holder: boolean | null;
+  company_landline: string | null;
+  company_website: string | null;
+  company_about: string | null;
+  company_gst_number: string | null;
+  company_pan_number: string | null;
+  company_iec_code: string | null;
+  company_trade_license_no: string | null;
+  company_consent_accepted_at: string | null;
+  company_joined_on: string | null;
+  company_address: string | null;
+  company_state: string | null;
+  company_country: string | null;
+  /**
+   * The guest's own details, for a booking with no company behind it. Everything
+   * a guest is, they typed — there is no account and no record elsewhere — so
+   * these are read INSTEAD of the company block, not alongside it.
+   */
+  guest_full_name: string | null;
+  guest_designation: string | null;
+  guest_company_name: string | null;
+  guest_gst_number: string | null;
+  guest_pan_number: string | null;
+  guest_state: string | null;
+  guest_pincode: string | null;
+  guest_country: string | null;
   city: string | null;
   tier_name: string | null;
   billing_company_name: string | null;
@@ -211,6 +247,9 @@ export interface RegistrationDetail {
   invoice_number: string | null;
   invoice_status: string | null;
   invoice_total: string | null;
+  /** What has actually been received against it, and what is still owed. */
+  invoice_amount_paid: string | null;
+  invoice_balance_due: string | null;
   invoice_due_date: string | null;
   attendees: RegistrationAttendee[];
   payments: RegistrationPayment[];

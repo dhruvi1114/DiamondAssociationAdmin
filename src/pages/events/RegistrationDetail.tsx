@@ -1,15 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Ban, Building2, CalendarDays, CheckCircle2, Receipt } from 'lucide-react';
+import { Ban, Building2, CalendarDays, CheckCircle2 } from 'lucide-react';
 import { Form, Input } from 'antd';
 import {
   Alert,
-  Badge,
   Button,
   Card,
   ConfirmDialog,
   DataTable,
-  DateCell,
   ErrorState,
   FormDrawer,
   MoneyText,
@@ -31,7 +29,6 @@ import EventService, {
   SUBMISSION_STATUS,
   type RegistrationAttendee,
   type RegistrationDetail as RegistrationRecord,
-  type RegistrationPayment,
 } from '@/services/eventService';
 import { asDisplayError, type DisplayError } from '@/utils/apiError';
 import { formatDate } from '@/utils/format';
@@ -98,6 +95,40 @@ const BANNER: Partial<Record<number, { variant: 'warning' | 'danger' | 'info'; m
       message: 'The event was cancelled and this booking was refunded in full.',
     },
   };
+
+/**
+ * One line of the money card: what it is on the left, the figure on the right.
+ *
+ * A two-column grid rather than `justify-between`, so the figures line up down a
+ * single edge whatever the labels are. Money read in a column is compared; money
+ * that zig-zags because one label is longer is read one row at a time.
+ */
+const MoneyRow = ({
+  label,
+  amount,
+  tone = 'normal',
+}: {
+  label: string;
+  amount: string;
+  tone?: 'normal' | 'paid' | 'owed';
+}) => (
+  <div className="flex items-baseline justify-between gap-3">
+    <span
+      className={`text-supporting ${tone === 'owed' ? 'text-status-danger-fg' : 'text-fg-muted'}`}
+    >
+      {label}
+    </span>
+    <span
+      className={[
+        'tabular text-supporting font-medium',
+        tone === 'paid' ? 'text-status-success-fg' : '',
+        tone === 'owed' ? 'text-status-danger-fg' : 'text-fg',
+      ].join(' ')}
+    >
+      <MoneyText amount={amount} />
+    </span>
+  </div>
+);
 
 const addressLine = (record: RegistrationRecord): string | null =>
   [
@@ -175,6 +206,22 @@ export const RegistrationDetail = () => {
 
   const banner = BANNER[booking.status];
   const steps = bookingSteps(booking);
+
+  /*
+    A cancelled invoice keeps its balance — voiding it does not zero the columns,
+    it stops them mattering. Read from the balance alone, a cancelled booking
+    showed a red "Outstanding ₹1,000" against a bill nobody will ever pay and
+    nobody should chase.
+  */
+  const voided = booking.invoice_status === 'CANCELLED';
+  const owes = !voided && Number(booking.invoice_balance_due ?? 0) > 0;
+  const summaryTone = booking.invoice_number
+    ? voided
+      ? `Invoice ${booking.invoice_number} · cancelled`
+      : owes
+        ? `Invoice ${booking.invoice_number} · due ${booking.invoice_due_date ? formatDate(booking.invoice_due_date) : 'on booking'}`
+        : `Invoice ${booking.invoice_number} · settled in full`
+    : undefined;
   const awaitingDecision = booking.status === REGISTRATION_STATUS.PENDING_APPROVAL;
   const isMember = booking.registrant_type === 0;
 
@@ -248,72 +295,209 @@ export const RegistrationDetail = () => {
               <Group
                 icon={<Building2 size={16} strokeWidth={1.5} />}
                 title="Booked By"
-                description={
-                  isMember
-                    ? 'A member company. The contact is the one given for THIS booking; where that differs from the company account, both are shown.'
-                    : 'A guest. Nothing here is on file elsewhere — it is what they typed at booking.'
-                }
-              >
-                <Field label="Name" value={booking.booked_by}>
-                  <span className="flex items-center gap-2">
-                    {booking.booked_by ?? 'Guest'}
-                    <Badge tone={isMember ? 'info' : 'neutral'}>
-                      {isMember ? 'Member' : 'Non-member'}
-                    </Badge>
-                  </span>
-                </Field>
-                <Field label="Member Code" value={booking.member_code} mono />
-                <Field label="Contact" value={booking.contact_name} />
-                <Field label="Email" value={booking.contact_email} />
-                <Field label="Phone" value={booking.contact_phone} />
-                <Field label="City" value={booking.city} />
-                {/*
-                  Shown only when the booking gave an address of its own that is
-                  not the company's. Otherwise the two fields repeat each other
-                  and the reader has to compare two identical strings to learn
-                  nothing. When they DO differ this is the whole answer to "why
-                  does this booking say a different email from the member record".
-                */}
-                {booking.account_email && booking.account_email !== booking.contact_email ? (
-                  <Field label="Company Account Email" value={booking.account_email} />
-                ) : null}
-                {booking.account_phone && booking.account_phone !== booking.contact_phone ? (
-                  <Field label="Company Account Phone" value={booking.account_phone} />
-                ) : null}
-              </Group>
+                /*
+                  Standing description hidden at the client's request. Kept as
+                  source, not deleted: it is the sentence that explains why a
+                  booking can show an email the member record does not, and if
+                  that question comes back this is what answered it.
 
-              <Group
-                icon={<Receipt size={16} strokeWidth={1.5} />}
-                title="Billing"
-                description="Frozen at booking, so a later profile edit cannot rewrite what the invoice said."
+                  description={
+                    isMember
+                      ? 'A member company. The contact is the one given for THIS booking; where that differs from the company account, both are shown.'
+                      : 'A guest. Nothing here is on file elsewhere — it is what they typed at booking.'
+                  }
+                */
               >
-                <Field label="Billed To" value={booking.billing_company_name} />
-                <Field label="GSTIN" value={booking.gst_number} mono />
-                <Field label="Address" value={addressLine(booking)} />
-                <Field label="Subtotal" value={booking.subtotal}>
-                  <MoneyText amount={booking.subtotal} />
-                </Field>
-                <Field label="Tax" value={booking.tax_amount}>
-                  <MoneyText amount={booking.tax_amount} />
-                </Field>
-                <Field label="Total" value={booking.total_amount}>
-                  <MoneyText amount={booking.total_amount} />
-                </Field>
+                {/*
+                  Two different records, so two different field sets — not one
+                  set with half of it reading "Not provided".
+
+                  A member booking is a company the association already holds:
+                  a code, a membership status, a class, a joining date. A guest
+                  is a person who typed their details once and has no account,
+                  no code and no status. Rendering the member shape for a guest
+                  filled the group with blanks that read as a company whose
+                  details are missing, when in truth there was never a company.
+                */}
+                {isMember ? (
+                  <>
+                    <Field label="Name" value={booking.booked_by} />
+                    {/*
+                      Its own field rather than a badge beside the name, at the
+                      client's request. Every other fact in this group is a
+                      label above a value, and one of them being a coloured pill
+                      inside another field's value made it read as decoration on
+                      the name rather than as an answer of its own.
+                    */}
+                    <Field label="Type" value="Member" />
+                    <Field label="Member Code" value={booking.member_code} mono />
+                    {/* Contact hidden at the client's request:
+                        <Field label="Contact" value={booking.contact_name} /> */}
+                    <Field label="Email" value={booking.contact_email} />
+                    <Field label="Phone" value={booking.contact_phone} />
+                    <Field label="City" value={booking.city} />
+                    {/* From the company's registered address, the same row the
+                        City above comes off. */}
+                    <Field label="State" value={booking.company_state} />
+                    <Field label="Country" value={booking.company_country} />
+                    {/*
+                      Shown only when the booking gave an address of its own that
+                      is not the company's. Otherwise the two fields repeat each
+                      other and the reader has to compare two identical strings to
+                      learn nothing. When they DO differ this is the whole answer
+                      to "why does this booking say a different email from the
+                      member record".
+                    */}
+                    {booking.account_email && booking.account_email !== booking.contact_email ? (
+                      <Field label="Company Account Email" value={booking.account_email} />
+                    ) : null}
+                    {booking.account_phone && booking.account_phone !== booking.contact_phone ? (
+                      <Field label="Company Account Phone" value={booking.account_phone} />
+                    ) : null}
+                    <Field label="Membership Status" value={booking.company_status}>
+                      {booking.company_status ? (
+                        <StatusChip domain="member" status={booking.company_status} />
+                      ) : null}
+                    </Field>
+                    <Field label="Company Type" value={booking.company_type} />
+                    <Field label="Company Category" value={booking.company_category} />
+                    {/*
+                      GSTIN Holder hidden at the client's request. Whether they
+                      hold one is answered by the GST number itself, two groups
+                      down — a yes/no beside the number it describes is a second
+                      way to say the same thing.
+
+                      <Field
+                        label="GSTIN Holder"
+                        value={booking.company_gstin_holder === null ? null
+                          : booking.company_gstin_holder ? 'Yes' : 'No'}
+                      />
+                    */}
+                    <Field label="Landline" value={booking.company_landline} />
+                    <Field label="Website" value={booking.company_website} />
+                    <Field
+                      label="Member Since"
+                      value={
+                        booking.company_joined_on ? formatDate(booking.company_joined_on) : null
+                      }
+                    />
+                    {/*
+                      Consent Accepted hidden at the client's request. It is when
+                      the company accepted the platform's terms on joining, which
+                      is a membership fact rather than a booking one — the
+                      booking's own consent is Terms Accepted, further down.
+
+                      <Field
+                        label="Consent Accepted"
+                        value={
+                          booking.company_consent_accepted_at
+                            ? formatDate(booking.company_consent_accepted_at)
+                            : null
+                        }
+                      />
+                    */}
+                    {/*
+                      The identity numbers, in this group rather than a
+                      "Registration & Identity" section of their own (client
+                      request). They sit with the other company facts and just
+                      before the bill, which is what they are quoted on.
+
+                      Monospaced, like everywhere else on the platform: these are
+                      read character by character when they are checked against a
+                      certificate, and a proportional face makes 0/O and 1/l the
+                      reader's problem.
+
+                      The guest branch below carries its own GST and PAN inline
+                      for the same reason — a guest has two of these four, and
+                      never a code or a licence.
+                    */}
+                    <Field label="GST Number" value={booking.company_gst_number} mono />
+                    <Field label="PAN" value={booking.company_pan_number} mono />
+                    <Field label="IEC Code" value={booking.company_iec_code} mono />
+                    <Field
+                      label="Trade Licence No."
+                      value={booking.company_trade_license_no}
+                      mono
+                    />
+                  </>
+                ) : (
+                  <>
+                    <Field label="Name" value={booking.guest_full_name ?? booking.booked_by} />
+                    <Field label="Type" value="Non-member" />
+                    <Field label="Designation" value={booking.guest_designation} />
+                    {/* Their firm, if they gave one. A guest may book personally,
+                        which is why this is a field and not the name above. */}
+                    <Field label="Company" value={booking.guest_company_name} />
+                    <Field label="Email" value={booking.contact_email} />
+                    <Field label="Phone" value={booking.contact_phone} />
+                    <Field label="City" value={booking.city} />
+                    <Field label="State" value={booking.guest_state} />
+                    <Field label="Pincode" value={booking.guest_pincode} />
+                    <Field label="Country" value={booking.guest_country} />
+                    <Field label="GST Number" value={booking.guest_gst_number} mono />
+                    <Field label="PAN" value={booking.guest_pan_number} mono />
+                  </>
+                )}
+
+                {/* The bill, the same on both — a guest is invoiced like anyone else. */}
                 <Field label="Invoice" value={booking.invoice_number} mono />
-                <Field label="Invoice Status" value={booking.invoice_status}>
-                  {booking.invoice_status ? (
-                    <StatusChip domain="invoice" status={booking.invoice_status} />
-                  ) : null}
-                </Field>
-                <Field
-                  label="Due"
-                  value={booking.invoice_due_date ? formatDate(booking.invoice_due_date) : null}
-                />
+                {/*
+                  Invoice Status hidden at the client's request. The same chip is
+                  beside the Money card's title in the sidebar, where it sits
+                  above the figures it is a verdict on.
+
+                  <Field label="Invoice Status" value={booking.invoice_status}>
+                    {booking.invoice_status ? (
+                      <StatusChip domain="invoice" status={booking.invoice_status} />
+                    ) : null}
+                  </Field>
+                */}
+                {/*
+                  Due hidden at the client's request. The Money card's subtitle
+                  in the sidebar already carries it — "Invoice IN… · due 01 Sept
+                  2026" — beside the balance it is the deadline for.
+
+                  <Field
+                    label="Due"
+                    value={booking.invoice_due_date ? formatDate(booking.invoice_due_date) : null}
+                  />
+                */}
                 <Field
                   label="Terms Accepted"
                   value={`${formatDate(booking.terms_accepted_at)} (${booking.terms_version})`}
                 />
                 <Field label="Photography Consent" value={booking.media_consent ? 'Yes' : 'No'} />
+
+                {/*
+                  Legal Name, Address and About The Company end the group
+                  together, at the client's request.
+
+                  All three are long-form: a legal name runs past its column, an
+                  address wraps to two lines, and a description can be a
+                  paragraph. Set among the short fields they broke the grid's
+                  rows; at the end they wrap into the space below without pushing
+                  anything sideways.
+                */}
+                {/*
+                  Legal Name hidden at the client's request. It is blank on every
+                  member checked — the registration form does not ask for it
+                  separately from the trading name — so it was a column of
+                  "Not provided" on the widest row of the group.
+
+                  {isMember ? (
+                    <Field label="Legal Name" value={booking.company_legal_name} />
+                  ) : null}
+                */}
+                <Field label="Address" value={addressLine(booking)} />
+                {/*
+                  About The Company hidden at the client's request. It is the
+                  member's own marketing prose, written for the directory, and
+                  nothing on a booking screen is decided by it.
+
+                  {isMember ? (
+                    <Field label="About The Company" value={booking.company_about} />
+                  ) : null}
+                */}
               </Group>
             </div>
           </Card>
@@ -383,63 +567,11 @@ export const RegistrationDetail = () => {
           </Card>
 
           {/*
-            Only once something has been claimed. An empty payments table on a
-            booking nobody has paid for reads as a fault rather than as a fact.
+            The wide claims table used to sit here. It is a narrow card in the
+            sidebar now, under the money it explains — a claim is only ever read
+            to answer "has this been paid, and by what", and that question is
+            asked of the money card, not of the record.
           */}
-          {booking.payments.length > 0 ? (
-            <Card flush title="Payments Claimed">
-              <DataTable<RegistrationPayment>
-                unit="claims"
-                serial
-                rowKey="id"
-                dataSource={booking.payments}
-                columns={[
-                  {
-                    title: 'Reference',
-                    dataIndex: 'reference_no',
-                    width: 190,
-                    render: (value: string) => <TextCell value={value} width={166} />,
-                  },
-                  {
-                    title: 'Method',
-                    dataIndex: 'method',
-                    width: 150,
-                    render: (value: number) => (
-                      <TextCell value={SUBMISSION_METHOD[value]} width={126} />
-                    ),
-                  },
-                  {
-                    title: 'Amount',
-                    dataIndex: 'amount',
-                    width: 120,
-                    render: (value: string) => <MoneyText amount={value} />,
-                  },
-                  {
-                    title: 'Paid On',
-                    dataIndex: 'paid_on',
-                    width: 130,
-                    render: (value: string) => <DateCell value={value} />,
-                  },
-                  {
-                    title: 'Claimed',
-                    dataIndex: 'createdAt',
-                    width: 130,
-                    render: (value: string) => <DateCell value={value} />,
-                  },
-                  {
-                    title: 'Status',
-                    dataIndex: 'status',
-                    render: (value: number) => (
-                      <StatusChip
-                        domain="paymentSubmission"
-                        status={SUBMISSION_NAME[value] ?? 'PENDING'}
-                      />
-                    ),
-                  },
-                ]}
-              />
-            </Card>
-          ) : null}
         </div>
 
         {/*
@@ -487,6 +619,139 @@ export const RegistrationDetail = () => {
             )}
           </Card>
 
+          {/*
+            Money, directly under the decision that creates it.
+
+            Three figures, in the order the question is asked: what it comes to,
+            what has arrived, what is still owed. The outstanding line is the one
+            anybody is really looking for, so it is the one that carries colour —
+            red while anything is owed, and nothing at all once it is settled.
+
+            The invoice's OWN running totals, not a sum over the claims below. A
+            claim is an assertion until somebody checks it against the bank
+            statement; `amount_paid` moves only when one is verified, which is
+            what makes it money rather than a hope.
+          */}
+          <Card
+            dense
+            title="Money"
+            description={summaryTone}
+            /*
+              The invoice's own chip, beside the title. It answers the card's
+              headline question — is this settled — before any of the figures are
+              read, and it is the same chip the record below carries, so the two
+              cannot say different things.
+            */
+            actions={
+              booking.invoice_status ? (
+                <StatusChip domain="invoice" status={booking.invoice_status} />
+              ) : null
+            }
+          >
+            {booking.invoice_number ? (
+              <div className="flex flex-col gap-2">
+                {/*
+                  The bill built up before what was paid against it: subtotal,
+                  the tax on it, then the total those two make. All three used to
+                  be fields in the record below, where they sat a long way from
+                  the only figures that matter beside them — what has arrived and
+                  what is still owed.
+                */}
+                <MoneyRow label="Subtotal" amount={booking.subtotal} />
+                <MoneyRow label="Tax" amount={booking.tax_amount} />
+                <div className="mt-1 border-t border-border pt-2">
+                  <MoneyRow label="Booking total" amount={booking.total_amount} />
+                </div>
+                <MoneyRow
+                  label="Paid"
+                  amount={booking.invoice_amount_paid ?? '0'}
+                  tone={Number(booking.invoice_amount_paid ?? 0) > 0 ? 'paid' : 'normal'}
+                />
+                <div className="mt-1 border-t border-border pt-2">
+                  {voided ? (
+                    /*
+                      Not "Outstanding ₹0" either. The bill was withdrawn, which
+                      is a different fact from a bill that was paid off, and the
+                      two must not read the same on a refund enquiry.
+                    */
+                    <p className="m-0 text-supporting text-fg-subtle">
+                      The invoice was cancelled. Nothing is owed on this booking.
+                    </p>
+                  ) : (
+                    <MoneyRow
+                      label="Outstanding"
+                      amount={booking.invoice_balance_due ?? '0'}
+                      tone={owes ? 'owed' : 'normal'}
+                    />
+                  )}
+                </div>
+              </div>
+            ) : (
+              /*
+                No invoice is a real state, not a gap: a free booking never
+                raises one, and an approval-gated booking has not reached the
+                point of raising one. Saying which of the two it is beats three
+                zero rows that read as a billing failure.
+              */
+              <p className="m-0 text-supporting text-fg-subtle">
+                {Number(booking.total_amount) === 0
+                  ? 'This booking is free. No invoice was raised.'
+                  : 'No invoice yet — one is raised when the booking is approved.'}
+              </p>
+            )}
+          </Card>
+
+          {/*
+            The claims, under the money they are claims against. Narrow rows
+            rather than the wide table this used to be: the only question asked
+            of a claim here is "what was sent, and was it found", and a six
+            column grid spent the reading column on the four answers nobody came
+            for.
+          */}
+          {booking.payments.length > 0 ? (
+            <Card
+              dense
+              title="Payments Claimed"
+              description={`${booking.payments.length} claim(s) against this invoice`}
+            >
+              <ul className="m-0 flex list-none flex-col gap-3 p-0">
+                {booking.payments.map((claim) => (
+                  <li key={claim.id} className="flex flex-col gap-1">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="truncate font-mono text-12 text-fg">
+                        {claim.reference_no}
+                      </span>
+                      <span className="tabular flex-none text-supporting font-medium text-fg">
+                        <MoneyText amount={claim.amount} />
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-12 text-fg-muted">
+                        {SUBMISSION_METHOD[claim.method]} · {formatDate(claim.paid_on)}
+                      </span>
+                      <StatusChip
+                        domain="paymentSubmission"
+                        status={SUBMISSION_NAME[claim.status] ?? 'PENDING'}
+                      />
+                    </div>
+                    {/* Only on a refusal — it is the reason somebody has to act. */}
+                    {claim.rejection_reason ? (
+                      <p className="m-0 text-12 text-status-danger-fg">{claim.rejection_reason}</p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ) : null}
+
+          {/*
+            "Where It Stands" is hidden at the client's request. Kept as source
+            rather than deleted: every date it carried — booked, held until,
+            approved, refused and why, cancelled — is now either on the stepper's
+            captions or in the record itself, so restoring it would mean deciding
+            what it says that they do not.
+          */}
+          {/*
           <Card dense title="Where It Stands">
             <dl className="m-0 grid grid-cols-1 gap-y-4">
               <Field label="Booked" value={formatDate(booking.registered_at)} />
@@ -517,6 +782,7 @@ export const RegistrationDetail = () => {
               />
             </dl>
           </Card>
+          */}
         </div>
       </div>
 
