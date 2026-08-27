@@ -116,6 +116,7 @@ export const ENDPOINTS = {
     attendees: (id: string) => `${API_BASE}/admin/events/${id}/attendees`,
     attendeesExport: (id: string) => `${API_BASE}/admin/events/${id}/attendees/export`,
     REGISTRATIONS: `${API_BASE}/admin/event-registrations`,
+    registration: (id: string) => `${API_BASE}/admin/event-registrations/${id}`,
     approve: (id: string) => `${API_BASE}/admin/event-registrations/${id}/approve`,
     reject: (id: string) => `${API_BASE}/admin/event-registrations/${id}/reject`,
     PAYMENT_SUBMISSIONS: `${API_BASE}/admin/payment-submissions`,

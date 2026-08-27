@@ -80,13 +80,28 @@ const GROUPS: {
   },
   {
     key: 'operations',
-    groups: ['billing', 'notification', 'application', 'directory', 'registration'],
+    /*
+      `events` and `membership` are here rather than in cards of their own for
+      the reason the other five are: how long seats are held and how long a
+      lapsed membership is tolerated are both "how the platform runs day to
+      day", and a card holding a single field reads as more screen than the
+      field is worth.
+    */
+    groups: [
+      'billing',
+      'notification',
+      'application',
+      'directory',
+      'registration',
+      'events',
+      'membership',
+    ],
     columns: 4,
     // Renamed from "Billing" once notifications, applications, the directory
     // and registration joined the invoice/fee settings in this one card —
     // "Billing" described only the smaller card this used to be.
     title: 'Operations',
-    note: 'How the platform runs day to day — invoices and what a new member is charged, the in-app bell, applications, the directory and registration.',
+    note: 'How the platform runs day to day — invoices, fees, notifications, applications, the directory and the windows a booking or a membership is held open for.',
   },
 ];
 
@@ -176,9 +191,10 @@ const COPY: Record<string, SettingCopy> = {
     help: 'Days between an invoice being issued and falling due. Issued 1 Sep with 15 falls due 16 Sep.',
   },
   'application.max_resubmissions': {
-    // "Maximum resubmissions" wrapped to two lines in a third of a half-width
-    // card. "Limit" carries the "maximum" on its own, and the ? has the detail.
-    label: 'Resubmission limit',
+    // "Maximum resubmissions" and then "Resubmission limit" both wrapped to two
+    // lines in a third of a half-width card. "Retries" says the same thing in
+    // half the width, and the ? carries the detail either way.
+    label: 'Retries allowed',
     help: 'How many times a rejected application may be corrected and resubmitted before the next rejection closes it permanently. 0 means unlimited, not none — with 0 an application can be sent back forever and is never closed by a reviewer.',
   },
   'directory.public_enabled': {
@@ -209,6 +225,19 @@ const COPY: Record<string, SettingCopy> = {
     label: 'Logo mark',
     help: 'The square version without the wordmark, for places the full logo will not fit — the browser tab, a collapsed sidebar. PNG, JPG or WebP, up to 2 MB.',
     slot: 'logo-mark',
+  },
+  'organisation.signature': {
+    label: 'Signature',
+    help: 'The authorised signature printed on invoices and receipts, above the association name. Upload a scan on a plain background. PNG, JPG or WebP, up to 2 MB.',
+    slot: 'signature',
+  },
+  'event.payment_hold_days': {
+    label: 'Event seat hold days',
+    help: 'How long a booking holds its seats before payment. The window is counted from approval on an event that needs it, so an admin taking their time never shortens what the payer gets.',
+  },
+  'membership.grace_days': {
+    label: 'Membership grace days',
+    help: 'How long after a membership expires it still counts as current — the window a renewal can be paid in before access is withdrawn.',
   },
   'billing.invoice_prefix': {
     label: 'Invoice prefix',
@@ -273,6 +302,7 @@ const ROW_ORDER = [
   'notification.whatsapp_enabled',
   'organisation.logo',
   'organisation.logo_mark',
+  'organisation.signature',
   'organisation.address',
   // Billing. The invoice, then the term, then the fee — and the fee's amount
   // immediately after the switch that reveals it — then the rest of "day to
@@ -288,6 +318,10 @@ const ROW_ORDER = [
   'notification.in_app_enabled',
   'application.max_resubmissions',
   'directory.public_enabled',
+  // The two day-to-day windows, beside the switches they run alongside and
+  // ahead of the two prose blocks that close the card.
+  'event.payment_hold_days',
+  'membership.grace_days',
   'registration.consent_text',
   'billing.invoice_footer',
 ];

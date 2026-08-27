@@ -184,7 +184,15 @@ export const DataTable = <T extends object>({
     set. The bar below splits the two: what this IS on the left, where you are
     in it on the right.
   */
-  const from = pagination ? (pagination.page - 1) * pagination.limit + 1 : 0;
+  /*
+    `1`, not `0`, when there is no pagination. `from` is the number of the first
+    row on screen, and the serial column renders `from + index` — so an
+    unpaginated table numbered its rows 0, 1, 2. An unpaginated table is one
+    complete page, and the first row on it is the first row.
+
+    The footer never sees this value: `showFooter` requires `pagination`.
+  */
+  const from = pagination ? (pagination.page - 1) * pagination.limit + 1 : 1;
   const to = pagination ? Math.min(pagination.page * pagination.limit, pagination.total) : 0;
   const showFooter = Boolean(pagination && pagination.total > 0);
 

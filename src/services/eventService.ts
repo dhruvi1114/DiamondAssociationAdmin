@@ -126,6 +126,96 @@ export const SUBMISSION_METHOD: Record<number, string> = {
   3: 'Cash',
 };
 
+/** One person on a booking, on the detail page. */
+export interface RegistrationAttendee {
+  attendee_code: string;
+  full_name: string;
+  designation: string | null;
+  email: string | null;
+  phone: string | null;
+  unit_price: string;
+  food_preference: number | null;
+  special_requirement: string | null;
+}
+
+/** One payment claim filed against a booking's invoice. */
+export interface RegistrationPayment {
+  id: string;
+  method: number;
+  reference_no: string;
+  amount: string;
+  paid_on: string;
+  status: number;
+  rejection_reason: string | null;
+  createdAt: string;
+  verified_at: string | null;
+}
+
+/**
+ * One booking, everything about it (A-23 detail).
+ *
+ * Wider than the list row rather than an extension of it: the detail carries the
+ * frozen billing snapshot and the event's own dates, and the list carries
+ * decision columns the detail renders differently. Declaring it separately keeps
+ * a column added to one from silently appearing in the other's type.
+ */
+export interface RegistrationDetail {
+  id: string;
+  registration_code: string;
+  event_id: string;
+  event_title: string;
+  event_slug: string;
+  event_start_at: string;
+  event_end_at: string;
+  event_venue_name: string | null;
+  event_city: string | null;
+  /** Whether this event gates bookings on a decision — the shape of its journey. */
+  event_requires_approval: boolean;
+  registrant_type: number;
+  status: number;
+  attendee_count: number;
+  subtotal: string;
+  tax_amount: string;
+  total_amount: string;
+  registered_at: string;
+  expires_at: string | null;
+  booked_by: string | null;
+  member_code: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  /** The member login's own address. Shown only when it differs from the booking's. */
+  account_email: string | null;
+  account_phone: string | null;
+  city: string | null;
+  tier_name: string | null;
+  billing_company_name: string | null;
+  gst_number: string | null;
+  billing_line1: string | null;
+  billing_line2: string | null;
+  billing_city: string | null;
+  billing_state: string | null;
+  billing_pincode: string | null;
+  billing_country: string | null;
+  terms_accepted_at: string;
+  terms_version: string;
+  media_consent: boolean;
+  approved_at: string | null;
+  approved_by: string | null;
+  rejection_reason: string | null;
+  rejected_at: string | null;
+  rejected_by: string | null;
+  cancelled_at: string | null;
+  cancelled_by: number | null;
+  invoice_id: string | null;
+  invoice_number: string | null;
+  invoice_status: string | null;
+  invoice_total: string | null;
+  invoice_due_date: string | null;
+  attendees: RegistrationAttendee[];
+  payments: RegistrationPayment[];
+}
+
 /** A booking, as the admin queues show it. */
 export interface RegistrationRow {
   id: string;
@@ -241,6 +331,8 @@ export const EventService = {
 
   listRegistrations: (params?: QueueParams): Promise<ApiResult<{ rows: RegistrationRow[] }>> =>
     BaseService.get(`${ENDPOINTS.EVENTS.REGISTRATIONS}${query(params)}`),
+  getRegistration: (id: string): Promise<ApiResult<RegistrationDetail>> =>
+    BaseService.get(ENDPOINTS.EVENTS.registration(id)),
   approveRegistration: (id: string) => BaseService.post(ENDPOINTS.EVENTS.approve(id), {}),
   rejectRegistration: (id: string, reason: string) =>
     BaseService.post(ENDPOINTS.EVENTS.reject(id), { reason }),

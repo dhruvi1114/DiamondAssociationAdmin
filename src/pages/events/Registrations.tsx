@@ -1,6 +1,7 @@
-import { Ban, CheckCircle2 } from 'lucide-react';
+import { Ban, CheckCircle2, Eye } from 'lucide-react';
 import { Form, Input } from 'antd';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Card,
   ConfirmDialog,
@@ -92,6 +93,7 @@ const BookingsTable = ({
 }) => {
   const { can } = usePermissions();
   const canDecide = can('event.manage');
+  const navigate = useNavigate();
 
   const [rows, setRows] = useState<RegistrationRow[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta | undefined>();
@@ -435,7 +437,8 @@ const BookingsTable = ({
             },
             {
               title: 'Actions',
-              width: 80,
+              /* Three icons now, not two. */
+              width: 120,
               fixed: 'right' as const,
               render: (_: unknown, row: RegistrationRow) => {
                 /*
@@ -451,6 +454,18 @@ const BookingsTable = ({
                 return (
                   <RowActions
                     actions={[
+                      {
+                        /*
+                          First, and never hidden or disabled. Reading a booking
+                          is what `event.view` already bought — the two decisions
+                          beside it are the ones a role or a settled status can
+                          take away.
+                        */
+                        key: 'view',
+                        icon: <Eye size={16} strokeWidth={1.5} />,
+                        label: 'Open this booking',
+                        onClick: () => navigate(`/registrations/${row.id}`),
+                      },
                       {
                         key: 'approve',
                         icon: <CheckCircle2 size={16} strokeWidth={1.5} />,

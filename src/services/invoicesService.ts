@@ -70,10 +70,8 @@ const query = (params: ListInvoicesParams = {}): string => {
  * `x-audience`, so sending it here would make the browser block the request
  * at the preflight before it ever reaches the server.
  */
-const downloadPdf = async (url: string, filename: string): Promise<void> => {
-  const response = await http.get<Blob>(url, { responseType: 'blob' });
-
-  const objectUrl = URL.createObjectURL(response.data);
+const saveBlob = (blob: Blob, filename: string): void => {
+  const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
 
   anchor.href = objectUrl;
@@ -85,15 +83,57 @@ const downloadPdf = async (url: string, filename: string): Promise<void> => {
   setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 };
 
+/**
+ * Open the PDF in a new tab instead of saving it.
+ *
+ * The tab is opened SYNCHRONOUSLY, before the fetch, and pointed at the file
+ * once the bytes arrive. Opening it after the `await` is a window opened from a
+ * timer as far as the browser is concerned, and every popup blocker stops it —
+ * the click that asked for it is long over by then.
+ *
+ * The object URL is revoked on a long timer rather than immediately: it is what
+ * the other tab is reading from, and revoking it the moment this one is done
+ * leaves the reader with a blank viewer.
+ */
+const previewPdf = async (url: string, filename: string): Promise<void> => {
+  /*
+    No `noopener` here, deliberately: with it `window.open` returns null by
+    specification, and null is exactly the handle this needs to point the tab at
+    the file once the bytes arrive. The opener is severed below instead, which
+    buys the same thing without giving up the reference.
+  */
+  const tab = window.open('', '_blank');
+
+  if (tab) tab.opener = null;
+
+  try {
+    const response = await http.get<Blob>(url, { responseType: 'blob' });
+    const objectUrl = URL.createObjectURL(response.data);
+
+    if (tab) {
+      tab.location.href = objectUrl;
+    } else {
+      // A blocked popup is not a reason to lose the document: fall back to the
+      // save the button used to do, so the click still produces the PDF.
+      saveBlob(response.data, filename);
+    }
+
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  } catch (error) {
+    tab?.close();
+    throw error;
+  }
+};
+
 export const InvoicesService = {
   list: (params?: ListInvoicesParams): Promise<ApiResult<InvoiceListRow[]>> =>
     BaseService.get(`${ENDPOINTS.INVOICES.LIST}${query(params)}`),
 
-  downloadInvoicePdf: (id: string, filename: string): Promise<void> =>
-    downloadPdf(ENDPOINTS.INVOICES.pdf(id), filename),
+  previewInvoicePdf: (id: string, filename: string): Promise<void> =>
+    previewPdf(ENDPOINTS.INVOICES.pdf(id), filename),
 
-  downloadReceiptPdf: (id: string, filename: string): Promise<void> =>
-    downloadPdf(ENDPOINTS.INVOICES.receiptPdf(id), filename),
+  previewReceiptPdf: (id: string, filename: string): Promise<void> =>
+    previewPdf(ENDPOINTS.INVOICES.receiptPdf(id), filename),
 };
 
 export default InvoicesService;

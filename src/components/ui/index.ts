@@ -33,6 +33,7 @@ export { default as Select, FormSelect, InlineSelect, MultiSelect } from './Sele
 export { default as Skeleton } from './Skeleton';
 export { default as StackedCell } from './StackedCell';
 export { default as StatusChip } from './StatusChip';
+export { default as Stepper } from './Stepper';
 export { default as StatusDot } from './StatusDot';
 export { default as TagList } from './TagList';
 export { default as DataTable } from './Table';
@@ -57,6 +58,7 @@ export type { ImageUploadProps } from './ImageUpload';
 export type { InputProps, TextareaProps } from './Input';
 export type { MoneyTextProps } from './MoneyText';
 export type { PermissionGateProps } from './PermissionGate';
+export type { Step, StepState, StepperProps } from './Stepper';
 export type { SelectProps, FormSelectProps, FormSelectOption, MultiSelectProps } from './Select';
 export type { SegmentedProps, SegmentedOption } from './Segmented';
 export type { SkeletonProps, SkeletonVariant } from './Skeleton';

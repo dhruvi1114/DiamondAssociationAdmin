@@ -27,7 +27,7 @@ export interface SettingChange {
 }
 
 /** The two images the platform holds. The URL segment, not the setting key. */
-export type BrandingSlot = 'logo' | 'logo-mark';
+export type BrandingSlot = 'logo' | 'logo-mark' | 'signature';
 
 export interface BrandingUploadResult {
   key: string;

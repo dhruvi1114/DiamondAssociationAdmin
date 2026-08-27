@@ -10,6 +10,7 @@ import Dashboard from '@/pages/Dashboard';
 import Categories from '@/pages/masters/Categories';
 import CompanyTypes from '@/pages/masters/CompanyTypes';
 import EventTypes from '@/pages/masters/EventTypes';
+import RegistrationDetail from '@/pages/events/RegistrationDetail';
 import DocumentTypes from '@/pages/masters/DocumentTypes';
 import Fees from '@/pages/masters/Fees';
 import Locations from '@/pages/masters/Locations';
@@ -297,6 +298,19 @@ export const AppRoutes = () => {
           element={
             <RequirePermission anyOf={['event.view']}>
               <Events />
+            </RequirePermission>
+          }
+        />
+        {/*
+          The detail route is declared BEFORE the wildcard queue route, or
+          `/registrations/*` swallows `/registrations/12` and renders the list
+          again — whichever is declared first wins.
+        */}
+        <Route
+          path="/registrations/:id"
+          element={
+            <RequirePermission anyOf={['event.view']}>
+              <RegistrationDetail />
             </RequirePermission>
           }
         />

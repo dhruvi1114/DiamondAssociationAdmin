@@ -128,10 +128,17 @@ export const Invoices = () => {
     void load();
   }, [load]);
 
-  const downloadPdf = useCallback(async (row: InvoiceListRow) => {
+  /*
+    Opens the PDF in a new tab rather than saving it. Reading it is what staff
+    came here to do — the only way to check an invoice used to be to save it,
+    find it in Downloads and open it, three steps to answer "is this the right
+    one". The browser's own viewer keeps the save button for the times a copy
+    is actually wanted.
+  */
+  const openPdf = useCallback(async (row: InvoiceListRow) => {
     setDownloadingId(row.id);
     try {
-      await InvoicesService.downloadInvoicePdf(row.id, `${row.invoice_number}.pdf`);
+      await InvoicesService.previewInvoicePdf(row.id, `${row.invoice_number}.pdf`);
     } finally {
       setDownloadingId(null);
     }
@@ -270,18 +277,18 @@ export const Invoices = () => {
             actions={[
               {
                 key: 'download',
-                label: 'Download PDF',
+                label: 'Open the PDF',
                 icon: <Download size={16} strokeWidth={1.5} aria-hidden />,
                 disabled: downloadingId === row.id,
-                ...(downloadingId === row.id ? { disabledReason: 'Preparing the PDF\u2026' } : {}),
-                onClick: () => void downloadPdf(row),
+                ...(downloadingId === row.id ? { disabledReason: 'Opening the PDF\u2026' } : {}),
+                onClick: () => void openPdf(row),
               },
             ]}
           />
         ),
       },
     ],
-    [downloadPdf, downloadingId, search],
+    [openPdf, downloadingId, search],
   );
 
   return (

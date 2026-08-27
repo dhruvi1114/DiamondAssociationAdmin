@@ -92,23 +92,28 @@ export const ProfileTab = ({ member, onChanged }: ProfileTabProps) => {
       .catch((caught: unknown) => setSaveError(asDisplayError(caught).message));
   }, [classOpen]);
 
-  const downloadInvoice = async (invoice: MemberInvoice) => {
+  /*
+    One button per document, and it opens the PDF in a new tab rather than
+    dropping a file into Downloads. Reading it is what staff came here to do;
+    the browser's own viewer has the save button for the times they want a copy.
+  */
+  const openInvoice = async (invoice: MemberInvoice) => {
     setDownloadingId(`invoice:${invoice.id}`);
     try {
-      await InvoicesService.downloadInvoicePdf(invoice.id, `${invoice.invoice_number}.pdf`);
+      await InvoicesService.previewInvoicePdf(invoice.id, `${invoice.invoice_number}.pdf`);
     } catch (caught) {
-      toast.error('Could not download invoice', { description: asDisplayError(caught).message });
+      toast.error('Could not open invoice', { description: asDisplayError(caught).message });
     } finally {
       setDownloadingId(null);
     }
   };
 
-  const downloadReceipt = async (invoice: MemberInvoice) => {
+  const openReceipt = async (invoice: MemberInvoice) => {
     setDownloadingId(`receipt:${invoice.id}`);
     try {
-      await InvoicesService.downloadReceiptPdf(invoice.id, `receipt-${invoice.invoice_number}.pdf`);
+      await InvoicesService.previewReceiptPdf(invoice.id, `receipt-${invoice.invoice_number}.pdf`);
     } catch (caught) {
-      toast.error('Could not download receipt', { description: asDisplayError(caught).message });
+      toast.error('Could not open receipt', { description: asDisplayError(caught).message });
     } finally {
       setDownloadingId(null);
     }
@@ -423,25 +428,25 @@ export const ProfileTab = ({ member, onChanged }: ProfileTabProps) => {
                     <StatusChip domain="invoice" status={invoice.status} />
                   </div>
                   <div className="flex items-center gap-1">
-                    <Tooltip title="Download invoice PDF">
+                    <Tooltip title="Open invoice PDF">
                       <Button
                         variant="secondary"
                         size="small"
-                        aria-label={`Download invoice ${invoice.invoice_number} PDF`}
+                        aria-label={`Open invoice ${invoice.invoice_number} PDF`}
                         loading={downloadingId === `invoice:${invoice.id}`}
                         icon={<Download size={14} strokeWidth={1.5} />}
-                        onClick={() => void downloadInvoice(invoice)}
+                        onClick={() => void openInvoice(invoice)}
                       />
                     </Tooltip>
                     {invoice.status === 'PAID' ? (
-                      <Tooltip title="Download receipt">
+                      <Tooltip title="Open receipt">
                         <Button
                           variant="secondary"
                           size="small"
-                          aria-label={`Download receipt for ${invoice.invoice_number}`}
+                          aria-label={`Open receipt for ${invoice.invoice_number}`}
                           loading={downloadingId === `receipt:${invoice.id}`}
                           icon={<ReceiptIcon size={14} strokeWidth={1.5} />}
-                          onClick={() => void downloadReceipt(invoice)}
+                          onClick={() => void openReceipt(invoice)}
                         />
                       </Tooltip>
                     ) : null}

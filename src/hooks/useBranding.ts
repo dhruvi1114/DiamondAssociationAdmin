@@ -21,7 +21,11 @@ import type { BrandingSlot } from '@/services/settingsService';
 
 type SlotStatus = 'unknown' | 'present' | 'absent';
 
-const status: Record<BrandingSlot, SlotStatus> = { logo: 'unknown', 'logo-mark': 'unknown' };
+const status: Record<BrandingSlot, SlotStatus> = {
+  logo: 'unknown',
+  'logo-mark': 'unknown',
+  signature: 'unknown',
+};
 const inFlight = new Set<BrandingSlot>();
 const listeners = new Set<() => void>();
 

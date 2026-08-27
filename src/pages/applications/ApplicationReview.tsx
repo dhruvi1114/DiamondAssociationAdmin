@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { CheckCircle2, ChevronRight, FileText } from 'lucide-react';
+import { ChevronRight, FileText } from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -11,6 +11,7 @@ import {
   PageHeader,
   Skeleton,
   StatusDot,
+  Stepper,
 } from '@/components/ui';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -64,7 +65,14 @@ import SnapshotPanel from './SnapshotPanel';
  * be scrolled away there — which the breadcrumb can.
  */
 
-/** The configured stages, drawn as a trail with this application's position on it. */
+/**
+ * The configured stages, drawn as a trail with this application's position on it.
+ *
+ * Maps onto the shared `Stepper` rather than drawing its own circles. It used to
+ * own that drawing; the booking detail page needed the same trail for a
+ * different sequence, and two copies is how two screens end up disagreeing about
+ * what "done" looks like.
+ */
 const StageTrail = ({
   stages,
   currentStageId,
@@ -77,64 +85,32 @@ const StageTrail = ({
   if (stages.length === 0) return null;
 
   const currentIndex = stages.findIndex((stage) => stage.id === currentStageId);
+  const current = stages.find((stage) => stage.id === currentStageId);
 
   return (
-    <ol className="m-0 flex list-none items-center p-0">
-      {stages.map((stage, index) => {
-        const isCurrent = stage.id === currentStageId;
-        // With no current stage the application is closed, so "done" means
-        // approved and nothing else. A rejected application did not clear the
-        // stages it never reached.
-        const isDone = currentIndex === -1 ? status === 'APPROVED' : index < currentIndex;
-
-        return (
-          <li key={stage.id} className="flex min-w-0 flex-1 items-center">
-            <div
-              className="flex min-w-0 items-center gap-2"
-              {...(isCurrent ? { 'aria-current': 'step' as const } : {})}
-            >
-              {isDone ? (
-                <CheckCircle2
-                  size={28}
-                  strokeWidth={1.5}
-                  className="flex-none text-status-success-fg"
-                  aria-hidden
-                />
-              ) : (
-                <span
-                  className={[
-                    'grid h-7 w-7 flex-none place-items-center rounded-full text-13 font-semibold',
-                    isCurrent ? 'bg-primary text-primary-fg' : 'bg-sunken text-fg-subtle',
-                  ].join(' ')}
-                  aria-hidden
-                >
-                  {stage.sequence}
-                </span>
-              )}
-              <div className="min-w-0">
-                <p
-                  className={[
-                    'm-0 truncate text-supporting font-medium',
-                    isCurrent ? 'text-primary' : isDone ? 'text-fg' : 'text-fg-muted',
-                  ].join(' ')}
-                >
-                  {stage.name}
-                </p>
-                <p className="m-0 truncate text-12 text-fg-muted">
-                  {stage.approver_role.name} decides
-                  {stage.sla_hours !== null ? ` · ${stage.sla_hours}h target` : ''}
-                </p>
-              </div>
-            </div>
-
-            {/* Connects to the next circle — the last stage has nothing after it. */}
-            {index < stages.length - 1 ? (
-              <div className={`mx-3 h-px min-w-6 flex-1 ${isDone ? 'bg-primary' : 'bg-border'}`} />
-            ) : null}
-          </li>
-        );
-      })}
-    </ol>
+    <Stepper
+      label={
+        current
+          ? `Stage ${current.sequence} of ${stages.length}: ${current.name}`
+          : `Application closed after ${stages.length} stage(s)`
+      }
+      steps={stages.map((stage, index) => ({
+        key: stage.id,
+        label: stage.name,
+        caption: `${stage.approver_role.name} decides${
+          stage.sla_hours !== null ? ` · ${stage.sla_hours}h target` : ''
+        }`,
+        state:
+          stage.id === currentStageId
+            ? ('current' as const)
+            : // With no current stage the application is closed, so "done" means
+              // approved and nothing else. A rejected application did not clear
+              // the stages it never reached.
+              (currentIndex === -1 ? status === 'APPROVED' : index < currentIndex)
+              ? ('done' as const)
+              : ('todo' as const),
+      }))}
+    />
   );
 };
 
