@@ -124,7 +124,14 @@ export const ImageUpload = ({
         ref={input}
         type="file"
         accept={accept}
-        className="hidden"
+        /*
+          An inline style, not the `hidden` utility. Inside an AntD `<Form>` the
+          form's own rules target this element with a descendant selector, which
+          outranks a single-class utility — so the tile rendered correctly on the
+          settings page and showed a raw "Choose file" beside it in a form
+          drawer. An inline declaration cannot be outranked by either.
+        */
+        style={{ display: 'none' }}
         tabIndex={-1}
         onChange={(event) => {
           const file = event.target.files?.[0];

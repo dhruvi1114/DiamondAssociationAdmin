@@ -124,6 +124,29 @@ export const ENDPOINTS = {
     rejectPayment: (id: string) => `${API_BASE}/admin/payment-submissions/${id}/reject`,
   },
 
+  /**
+   * News — the association's own writing on the public website (M9).
+   *
+   * Not `/communication/notices`: a notice is pushed to chosen members and
+   * tracked per recipient, news is a page anyone can read and Google indexes.
+   * Different audience, different table, different endpoint tree.
+   */
+  NEWS: {
+    LIST: `${API_BASE}/admin/news`,
+    detail: (id: string) => `${API_BASE}/admin/news/${id}`,
+    publish: (id: string) => `${API_BASE}/admin/news/${id}/publish`,
+    unpublish: (id: string) => `${API_BASE}/admin/news/${id}/unpublish`,
+    archive: (id: string) => `${API_BASE}/admin/news/${id}/archive`,
+    cover: (id: string) => `${API_BASE}/admin/news/${id}/cover`,
+    attachments: (id: string) => `${API_BASE}/admin/news/${id}/attachments`,
+    attachment: (id: string, attachmentId: string) =>
+      `${API_BASE}/admin/news/${id}/attachments/${attachmentId}`,
+    images: (id: string) => `${API_BASE}/admin/news/${id}/images`,
+    image: (id: string, imageId: string) => `${API_BASE}/admin/news/${id}/images/${imageId}`,
+    CATEGORIES: `${API_BASE}/admin/news-categories`,
+    category: (id: string) => `${API_BASE}/admin/news-categories/${id}`,
+  },
+
   /** Membership catalogue — categories, tiers, fees, document types (M2). */
   MASTERS: {
     CATEGORIES: `${API_BASE}/admin/membership-categories`,

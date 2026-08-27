@@ -118,6 +118,19 @@ const map: Record<string, StatusPresentation> = {
   'eventVisibility.MEMBER_ONLY': { variant: 'info', label: 'Members only' },
   'eventVisibility.PUBLIC': { variant: 'neutral', label: 'Public' },
 
+  // --- News (M9) -------------------------------------------------------------
+  // Archived, not deleted: an article that has been on the public web is a
+  // record of what the association said. "Retired" says that better than
+  // "Archived", which reads as filed away rather than taken down.
+  'news.DRAFT': { variant: 'neutral', label: 'Draft' },
+  'news.PUBLISHED': { variant: 'success', label: 'Published' },
+  'news.ARCHIVED': { variant: 'neutral', label: 'Retired' },
+
+  // Its own domain, not shared with events, even though the codes match: the
+  // labels are free to diverge the day one of the two needs different words.
+  'newsVisibility.MEMBER_ONLY': { variant: 'info', label: 'Members only' },
+  'newsVisibility.PUBLIC': { variant: 'neutral', label: 'Public' },
+
   // A booking's state. Labels say what is true for the booker, not what the
   // column stores: "Seats held" is the one where somebody owes money, and
   // "Seats released" says the outcome rather than the mechanism.

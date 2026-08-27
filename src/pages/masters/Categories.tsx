@@ -224,7 +224,7 @@ const CategoriesTab = ({ onRegisterCreate, onRegisterSearch }: TabBodyProps) => 
           onChange={onSearch}
           label="Search categories"
           placeholder="Search code or name…"
-          className="w-[240px]"
+          className="min-w-0 w-full max-w-[240px] sm:w-[240px]"
         />
 
         <FilterDropdown<CategoryFilters>
@@ -347,11 +347,11 @@ const CategoriesTab = ({ onRegisterCreate, onRegisterSearch }: TabBodyProps) => 
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
+    <div className="flex h-full min-h-0 min-w-0 flex-col gap-4">
       {/* No toolbar row: the "Add category" button is registered above and drawn
           on the tab row. No card title either — the tab already names this list
           and a third heading on one screen is noise (layout.md page anatomy). */}
-      <Card flush className="min-h-0 flex-1">
+      <Card flush className="min-h-0 min-w-0 flex-1">
         <DataTable<Category>
           unit="categories"
           serial
@@ -542,7 +542,12 @@ const CategoriesTab = ({ onRegisterCreate, onRegisterSearch }: TabBodyProps) => 
             gate in front of it. On an edit there is no code field at all and Name
             simply takes the row.
           */}
-          <div className="flex gap-4">
+          {/*
+            Stack below `sm`. Side-by-side fields on a phone drawer leave each
+            input too narrow to type a code or name; one column restores a
+            usable field width. Same breakpoint SystemSettings uses for pairs.
+          */}
+          <div className="flex flex-col gap-4 sm:flex-row">
             <Form.Item
               name="name"
               label="Name"
@@ -594,7 +599,7 @@ const CategoriesTab = ({ onRegisterCreate, onRegisterSearch }: TabBodyProps) => 
             between them. Paired, they also read as what they are: the two
             settings that decide where this appears and whether it appears at all.
           */}
-          <div className="flex gap-4">
+          <div className="flex flex-col gap-4 sm:flex-row">
             <Form.Item name="display_order" label="Display order" className="min-w-0 flex-1">
               <NumberInput min={0} max={999} />
             </Form.Item>
@@ -709,7 +714,7 @@ const TiersTab = ({ onRegisterCreate, onRegisterSearch }: TabBodyProps) => {
           onChange={onSearch}
           label="Search tiers"
           placeholder="Search code or name…"
-          className="w-[240px]"
+          className="min-w-0 w-full max-w-[240px] sm:w-[240px]"
         />
 
         <FilterDropdown<TierFilters>
@@ -1006,7 +1011,7 @@ const TiersTab = ({ onRegisterCreate, onRegisterSearch }: TabBodyProps) => {
         onConfirm={() => void submit()}
       >
         <Form form={form} layout="vertical" requiredMark={false}>
-          <div className="flex gap-4">
+          <div className="flex flex-col gap-4 sm:flex-row">
             <Form.Item
               name="name"
               label="Name"
@@ -1052,8 +1057,8 @@ const TiersTab = ({ onRegisterCreate, onRegisterSearch }: TabBodyProps) => {
             match the inputs beside it, and renders as an OS menu on every
             platform.
           */}
-          {/* Two equal cells: category and display order share the row. */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Two equal cells above `sm`; stacked on a phone. */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {/*
               Locked on an edit, not hidden. A tier means nothing without the
               category it sits inside — "Gold" is a different thing under Grower
@@ -1104,7 +1109,11 @@ export const Categories = () => {
   const registerSearch = useCallback((node: ReactNode) => setSearchBox(node), []);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    /*
+      `min-w-0` is load-bearing: without it a wide table inside a flex child
+      expands the page instead of scrolling inside `DataTable`'s body.
+    */
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
       <PageHeader
         title="Categories"
         actions={

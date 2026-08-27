@@ -19,6 +19,8 @@ import Login from '@/pages/Login';
 import MemberDetail from '@/pages/members/MemberDetail';
 import NotFound from '@/pages/NotFound';
 import Events from '@/pages/events/Events';
+import News from '@/pages/news/News';
+import NewsCategories from '@/pages/masters/NewsCategories';
 import Registrations from '@/pages/events/Registrations';
 import PaymentQueue from '@/pages/billing/PaymentQueue';
 import Placeholder from '@/pages/Placeholder';
@@ -301,6 +303,25 @@ export const AppRoutes = () => {
             </RequirePermission>
           }
         />
+        {/* M9 — the news category master, beside the other catalogue masters. */}
+        <Route
+          path="/masters/news-categories"
+          element={
+            <RequirePermission anyOf={['news.view']}>
+              <NewsCategories />
+            </RequirePermission>
+          }
+        />
+        {/* M9 — news, the association's own writing on the public website. */}
+        <Route
+          path="/news/*"
+          element={
+            <RequirePermission anyOf={['news.view']}>
+              <News />
+            </RequirePermission>
+          }
+        />
+
         {/*
           The detail route is declared BEFORE the wildcard queue route, or
           `/registrations/*` swallows `/registrations/12` and renders the list

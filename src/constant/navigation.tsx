@@ -14,6 +14,7 @@ import {
   MapPin,
   Megaphone,
   Network,
+  Newspaper,
   RefreshCw,
   Scale,
   ScrollText,
@@ -208,6 +209,20 @@ export const NAV_GROUPS: NavGroup[] = [
         module: 'M7',
       },
       {
+        /*
+          News, not Notices. A notice is pushed to chosen members and tracked per
+          recipient; news is a page anyone can read and Google indexes. They sit
+          next to each other because both are things the association publishes,
+          and are separate because the audience and the lifecycle differ.
+        */
+        key: 'news',
+        label: 'News',
+        path: '/news',
+        icon: Newspaper,
+        anyOf: ['news.view'],
+        module: 'M9',
+      },
+      {
         key: 'notices',
         label: 'Notices',
         path: '/communication/notices',
@@ -276,6 +291,19 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: CalendarDays,
         anyOf: ['category.view'],
         module: 'M7',
+      },
+      {
+        /*
+          A master, like Event Types beside it: the filter tabs on the website's
+          news page are the association's own vocabulary, and it maintains them
+          here rather than on the News screen where the daily work happens.
+        */
+        key: 'news-categories',
+        label: 'News Categories',
+        path: '/masters/news-categories',
+        icon: Newspaper,
+        anyOf: ['news.view'],
+        module: 'M9',
       },
       {
         key: 'locations',

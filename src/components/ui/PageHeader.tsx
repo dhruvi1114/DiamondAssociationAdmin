@@ -49,10 +49,19 @@ export const PageHeader = ({ title, subtitle, actions, filters }: PageHeaderProp
           {subtitle ? (
             <p className="m-0 min-w-0 max-w-[70ch] text-12 text-fg-muted">{subtitle}</p>
           ) : (
-            <span />
+            <span className="hidden sm:block" />
           )}
           {actions ? (
-            <div className="flex flex-none flex-wrap items-center gap-2">{actions}</div>
+            /*
+              `min-w-0 max-w-full` lets the group shrink below its children's
+              preferred widths on a phone; without it a fixed search box plus
+              Add button overflowed the page instead of wrapping. `w-full` on
+              small screens makes a lone actions row use the full toolbar so
+              the search field can grow into the spare room.
+            */
+            <div className="flex min-w-0 w-full max-w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+              {actions}
+            </div>
           ) : null}
         </div>
       ) : null}
