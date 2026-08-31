@@ -651,6 +651,34 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
       },
 
       {
+        title: 'In Directory',
+        dataIndex: 'directory_visible',
+        key: 'directory_visible',
+        width: 150,
+        /*
+          Read-only, and it explains rather than controls. Three switches decide
+          whether a company is listed — the association's global switch, the
+          firm's ACTIVE status, and the member's own choice — and only the first
+          is staff's. A toggle here would imply otherwise, so the cell names
+          whose decision is in force and stops there.
+        */
+        render: (_: unknown, row: ApplicationQueueRow) => {
+          if (row.member_status && row.member_status !== 'ACTIVE') {
+            return <StatusChip domain="directory" status="NOT_ACTIVE" />;
+          }
+
+          if (row.directory_visible === false) {
+            return <StatusChip domain="directory" status="OPTED_OUT" />;
+          }
+
+          if (row.directory_visible === true) {
+            return <StatusChip domain="directory" status="LISTED" />;
+          }
+
+          return <NotAvailable />;
+        },
+      },
+      {
         title: 'Category',
         dataIndex: 'category_name',
         key: 'category_name',

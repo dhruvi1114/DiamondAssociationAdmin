@@ -67,7 +67,7 @@ const GROUPS: {
   note: string;
   /** Fields per row at `xl` and up. 3 unless a card says otherwise — Operations
    *  earns 4 because "Application fee", "In-app bell", "Resubmission limit"
-   *  and "Public directory" read as one row of four short switches, not two
+   *  and "Member Directory" read as one row of four short switches, not two
    *  cramped rows of two. */
   columns?: 3 | 4;
 }[] = [
@@ -197,9 +197,21 @@ const COPY: Record<string, SettingCopy> = {
     label: 'Retries allowed',
     help: 'How many times a rejected application may be corrected and resubmitted before the next rejection closes it permanently. 0 means unlimited, not none — with 0 an application can be sent back forever and is never closed by a reviewer.',
   },
-  'directory.public_enabled': {
-    label: 'Public directory',
-    help: 'On makes the list of member firms readable by anyone, without logging in.',
+  /*
+    RETIRED 2026-08-31 — decision D1 made the member directory members-only, so
+    there is no public directory and nothing reads `directory.public_enabled`.
+    A switch labelled "Public directory" would be worse than useless: staff
+    would read it as proof member data can be published, and flipping it would
+    do nothing.
+
+    'directory.public_enabled': {
+      label: 'Public directory',
+      help: 'On makes the list of member firms readable by anyone, without logging in.',
+    },
+  */
+  'directory.enabled': {
+    label: 'Member Directory',
+    help: 'On lets active members search the directory and contact each other. Off closes it for everyone and shows members an explanatory screen — it does not change any member’s own listing choice, and it never makes anything public. The directory is only ever visible to members whose membership is active.',
   },
   'registration.consent_text': {
     label: 'Registration consent text',
@@ -317,7 +329,7 @@ const ROW_ORDER = [
   'billing.application_fee_amount',
   'notification.in_app_enabled',
   'application.max_resubmissions',
-  'directory.public_enabled',
+  'directory.enabled',
   // The two day-to-day windows, beside the switches they run alongside and
   // ahead of the two prose blocks that close the card.
   'event.payment_hold_days',

@@ -35,6 +35,17 @@ const map: Record<string, StatusPresentation> = {
   'fee.CLOSED': { variant: 'neutral', label: 'Closed' },
   'fee.INACTIVE': { variant: 'neutral', label: 'Retired' },
 
+  // --- Directory (M9): whether a company appears in the member directory ------
+  /*
+    Three switches decide this and only one is the association's, so the labels
+    name WHOSE decision is keeping a company out. "Hidden" alone would read as
+    something staff did, and staff would go looking for a setting to undo.
+  */
+  'directory.LISTED': { variant: 'success', label: 'Listed' },
+  'directory.OPTED_OUT': { variant: 'neutral', label: 'Hidden by member' },
+  'directory.NOT_ACTIVE': { variant: 'neutral', label: 'Not active' },
+  'directory.DISABLED': { variant: 'warning', label: 'Directory off' },
+
   // --- Application -----------------------------------------------------------
   'application.DRAFT': { variant: 'neutral', label: 'Draft' },
   'application.SUBMITTED': { variant: 'info', label: 'New' },

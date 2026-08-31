@@ -108,6 +108,13 @@ export interface ApplicationQueueRow {
   city: string | null;
   state: string | null;
   /**
+   * The COMPANY's lifecycle state, not the application's — `status` above is the
+   * application's. A firm can hold an APPROVED application and be EXPIRED today.
+   */
+  member_status: string | null;
+  /** The member's own directory listing choice. Theirs, not the association's. */
+  directory_visible: boolean | null;
+  /**
    * `count(*) OVER ()` from the queue query. The envelope's `pagination.total`
    * is derived from it and is what screens should read; it is typed here only
    * because it genuinely arrives on the wire.
