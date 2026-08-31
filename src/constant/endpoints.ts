@@ -113,6 +113,7 @@ export const ENDPOINTS = {
     detail: (id: string) => `${API_BASE}/admin/events/${id}`,
     publish: (id: string) => `${API_BASE}/admin/events/${id}/publish`,
     cancel: (id: string) => `${API_BASE}/admin/events/${id}/cancel`,
+    banner: (id: string) => `${API_BASE}/admin/events/${id}/banner`,
     attendees: (id: string) => `${API_BASE}/admin/events/${id}/attendees`,
     attendeesExport: (id: string) => `${API_BASE}/admin/events/${id}/attendees/export`,
     REGISTRATIONS: `${API_BASE}/admin/event-registrations`,

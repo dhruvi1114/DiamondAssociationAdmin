@@ -57,7 +57,9 @@ export interface EventRow {
 
 export interface EventDetail extends EventRow {
   description: string | null;
-  banner_path: string | null;
+  /** Where the poster can be fetched, or null when none is set. */
+  banner_url: string | null;
+  banner_alt: string | null;
   venue_name: string | null;
   venue_address_line1: string | null;
   venue_address_line2: string | null;
@@ -391,6 +393,27 @@ export const EventService = {
   verifyPayment: (id: string) => BaseService.post(ENDPOINTS.EVENTS.verifyPayment(id), {}),
   rejectPayment: (id: string, reason: string) =>
     BaseService.post(ENDPOINTS.EVENTS.rejectPayment(id), { reason }),
+
+  /**
+   * The poster.
+   *
+   * Its own call, never part of the form's draft: the stored value is a key the
+   * server decides, so there is nothing for the form to hold — the upload IS the
+   * save. Fetched back with the staff token because the public URL answers 404
+   * for a draft, and an `<img src>` cannot carry an Authorization header.
+   */
+  uploadBanner: (id: string, file: File) => {
+    const body = new FormData();
+
+    body.append('file', file);
+
+    return BaseService.post<null>(ENDPOINTS.EVENTS.banner(id), body);
+  },
+
+  removeBanner: (id: string) => BaseService.delete<null>(ENDPOINTS.EVENTS.banner(id)),
+
+  fetchBanner: async (id: string): Promise<Blob> =>
+    (await http.get<Blob>(ENDPOINTS.EVENTS.banner(id), { responseType: 'blob' })).data,
 };
 
 export default EventService;

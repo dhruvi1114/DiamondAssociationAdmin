@@ -14,6 +14,7 @@ import {
   FormDrawer,
   FormSelect,
   Highlight,
+  ImageUpload,
   MultiSelect,
   NotAvailable,
   NumberInput,
@@ -176,6 +177,17 @@ const Events = () => {
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<EventDetail | null>(null);
+  /*
+    The poster, and the one picked before the event exists.
+
+    An upload needs an id to belong to, and a brand-new event has none — but
+    "save first, then come back for the picture" is a rule the organiser obeys
+    for the tool's convenience, not their own. A file picked now is held here,
+    previewed locally, and sent the moment Save creates the row.
+  */
+  const [bannerSrc, setBannerSrc] = useState<string | null>(null);
+  const [pendingBanner, setPendingBanner] = useState<File | null>(null);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
 
@@ -289,11 +301,72 @@ const Events = () => {
   const activeFilterCount =
     (filters.status.length > 0 ? 1 : 0) + (filters.visibility.length > 0 ? 1 : 0);
 
+  /* Object URLs are revoked when replaced, or the tab leaks a blob per open. */
+  const showBanner = useCallback((blob: Blob | null) => {
+    setBannerSrc((previous) => {
+      if (previous) URL.revokeObjectURL(previous);
+
+      return blob ? URL.createObjectURL(blob) : null;
+    });
+  }, []);
+
+  const uploadBanner = useCallback(
+    async (id: string, file: File) => {
+      setUploadingBanner(true);
+
+      try {
+        await EventService.uploadBanner(id, file);
+        showBanner(await EventService.fetchBanner(id));
+        toast.success('Poster updated');
+      } catch (err) {
+        toast.error(asError(err).message);
+      } finally {
+        setUploadingBanner(false);
+      }
+    },
+    [showBanner],
+  );
+
+  /** Send it now if there is something to attach it to, otherwise hold it. */
+  const chooseBanner = useCallback(
+    (file: File) => {
+      if (editing) {
+        void uploadBanner(editing.id, file);
+
+        return;
+      }
+
+      setPendingBanner(file);
+      // The organiser's own file — there is nothing stored yet.
+      showBanner(file);
+    },
+    [editing, showBanner, uploadBanner],
+  );
+
+  const clearBanner = useCallback(async () => {
+    if (!editing) {
+      setPendingBanner(null);
+      showBanner(null);
+
+      return;
+    }
+
+    try {
+      await EventService.removeBanner(editing.id);
+      showBanner(null);
+      toast.success('Poster removed');
+    } catch (err) {
+      toast.error(asError(err).message);
+    }
+  }, [editing, showBanner]);
+
   const openCreate = useCallback(() => {
     setEditing(null);
     form.resetFields();
+    setPendingBanner(null);
+    showBanner(null);
     setOpen(true);
-  }, [form]);
+  }, [form, showBanner]);
 
   const openEdit = useCallback(
     async (row: EventRow) => {
@@ -302,10 +375,26 @@ const Events = () => {
         const detail = res.data;
 
         setEditing(detail);
+        setPendingBanner(null);
+
+        if (detail.banner_url) {
+          try {
+            showBanner(await EventService.fetchBanner(detail.id));
+          } catch {
+            // A missing poster is a state the tile already draws. Not worth a
+            // toast on open — the operator has not asked for anything yet.
+            showBanner(null);
+          }
+        } else {
+          showBanner(null);
+        }
+
         form.setFieldsValue({
           title: detail.title,
           event_type_id: detail.event_type_id ?? undefined,
           description: detail.description ?? undefined,
+          /* No `banner_alt` — the field is commented out below, so setting it
+             here would seed a value the form can never show or change. */
           dates: [dayjs(detail.start_at), dayjs(detail.end_at)],
           start_time: dayjs(detail.start_at),
           end_time: dayjs(detail.end_at),
@@ -332,7 +421,7 @@ const Events = () => {
         toast.error(asError(err).message);
       }
     },
-    [form],
+    [form, showBanner],
   );
 
   const submit = useCallback(async () => {
@@ -374,7 +463,17 @@ const Events = () => {
         await EventService.update(editing.id, body);
         toast.success('Event updated');
       } else {
-        await EventService.create(body);
+        const created = await EventService.create(body);
+
+        /*
+          The row exists now, so a poster picked while it did not can finally be
+          sent. Before the toast, so "saved" is true of the picture too.
+        */
+        if (pendingBanner) {
+          await uploadBanner(created.data.id, pendingBanner);
+          setPendingBanner(null);
+        }
+
         toast.success('Event saved as a draft. Publish it when you are ready.');
       }
 
@@ -408,7 +507,7 @@ const Events = () => {
     } finally {
       setSaving(false);
     }
-  }, [editing, form, load]);
+  }, [editing, form, load, pendingBanner, uploadBanner]);
 
   /*
     Hidden at the client's request. Kept rather than deleted, because the
@@ -741,9 +840,53 @@ const Events = () => {
             </Form.Item>
           </div>
 
-          <Form.Item name="description" label="Description">
-            <Input.TextArea rows={3} placeholder="What the event is about" />
-          </Form.Item>
+          {/*
+            The description and the poster share a row: they are the two halves
+            of "what is this event", and a tile on a line of its own under a
+            textarea reads as an afterthought rather than as part of the same
+            answer. The textarea takes the slack; the tile is a fixed square.
+          */}
+          <div className="flex items-start gap-4">
+            <div>
+              <FieldLabel
+                label="Poster"
+                help="Shown on the events page and used as the picture when the event is shared. Portrait images look best."
+                className="text-supporting font-medium"
+              />
+              <div className="mt-2">
+                <ImageUpload
+                  src={bannerSrc}
+                  label="Poster"
+                  uploading={uploadingBanner}
+                  disabled={!canManage}
+                  onSelect={chooseBanner}
+                  onRemove={bannerSrc ? () => void clearBanner() : undefined}
+                />
+              </div>
+            </div>
+
+            <Form.Item name="description" label="Description" className="min-w-0 flex-1">
+              <Input.TextArea rows={4} placeholder="What the event is about" />
+            </Form.Item>
+          </div>
+
+          {/*
+            The poster's alt text is not a field.
+
+            Removed at the client's request. The column is still there and the
+            API still accepts it, so restoring this block is all it takes — but
+            note what is lost while it is gone: the poster reaches the public
+            events page with an empty `alt`, which a screen reader skips and a
+            search engine reads nothing from.
+
+            <Form.Item
+              name="banner_alt"
+              label={<FieldLabel label="Describe the Poster" help="…" />}
+              className="min-w-0 flex-1"
+            >
+              <Input maxLength={200} placeholder="Speakers at last year's seminar" />
+            </Form.Item>
+          */}
 
           {/*
             Dates and times on one row: they are one fact — when the event runs —
