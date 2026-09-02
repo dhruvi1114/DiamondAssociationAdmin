@@ -113,6 +113,15 @@ const map: Record<string, StatusPresentation> = {
   'payment.REFUNDED': { variant: 'warning', label: 'Refunded' },
   'payment.PARTIALLY_REFUNDED': { variant: 'warning', label: 'Partly refunded' },
 
+  // --- Refund ----------------------------------------------------------------
+  // "Requested" is info, not warning: it is the ordinary state of a new refund,
+  // and colouring every fresh row as a problem makes the queue unreadable.
+  'refund.REQUESTED': { variant: 'info', label: 'Requested' },
+  'refund.PROCESSING': { variant: 'warning', label: 'Approved, not sent' },
+  'refund.COMPLETED': { variant: 'success', label: 'Sent' },
+  'refund.FAILED': { variant: 'danger', label: 'Failed' },
+  'refund.REJECTED': { variant: 'neutral', label: 'Rejected' },
+
   // --- Document --------------------------------------------------------------
   'document.PENDING': { variant: 'info', label: 'Awaiting verification' },
   'document.VERIFIED': { variant: 'success', label: 'Verified' },

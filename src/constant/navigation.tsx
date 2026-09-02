@@ -12,11 +12,8 @@ import {
   LayoutTemplate,
   type LucideIcon,
   MapPin,
-  Megaphone,
   Network,
   Newspaper,
-  RefreshCw,
-  Scale,
   ScrollText,
   Send,
   Settings,
@@ -121,14 +118,6 @@ export const NAV_GROUPS: NavGroup[] = [
         module: 'M3',
       },
       {
-        key: 'renewals',
-        label: 'Renewals',
-        path: '/renewals',
-        icon: RefreshCw,
-        anyOf: ['renewal.view'],
-        module: 'M6',
-      },
-      {
         key: 'org',
         /*
           Filed under Work, not Configure. Office bearers, committees and chapter
@@ -167,14 +156,6 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Payments',
         path: '/billing/payments',
         icon: CircleDollarSign,
-        anyOf: ['payment.view'],
-        module: 'M5',
-      },
-      {
-        key: 'reconciliation',
-        label: 'Reconciliation',
-        path: '/billing/reconciliation',
-        icon: Scale,
         anyOf: ['payment.view'],
         module: 'M5',
       },
@@ -221,14 +202,6 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Newspaper,
         anyOf: ['news.view'],
         module: 'M9',
-      },
-      {
-        key: 'notices',
-        label: 'Notices',
-        path: '/communication/notices',
-        icon: Megaphone,
-        anyOf: ['notice.view'],
-        module: 'M8',
       },
       {
         key: 'templates',

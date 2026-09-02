@@ -6,6 +6,7 @@ import AppShell from '@/layouts/AppShell';
 import ApplicationQueue from '@/pages/applications/ApplicationQueue';
 import ApplicationReview from '@/pages/applications/ApplicationReview';
 import Invoices from '@/pages/billing/Invoices';
+import Refunds from '@/pages/billing/Refunds';
 import Dashboard from '@/pages/Dashboard';
 import Categories from '@/pages/masters/Categories';
 import CompanyTypes from '@/pages/masters/CompanyTypes';
@@ -290,6 +291,19 @@ export const AppRoutes = () => {
           element={
             <RequirePermission anyOf={['invoice.view']}>
               <Invoices />
+            </RequirePermission>
+          }
+        />
+
+        {/*
+          M5 — the refund queue. The nav has advertised this path since the
+          billing group was written; until now it led nowhere.
+        */}
+        <Route
+          path="/billing/refunds"
+          element={
+            <RequirePermission anyOf={['refund.manage']}>
+              <Refunds />
             </RequirePermission>
           }
         />

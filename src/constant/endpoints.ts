@@ -100,6 +100,15 @@ export const ENDPOINTS = {
   },
 
   /** Every invoice, org-wide (M5, A-14). */
+  /** The refund queue — `refund.manage`, ACCOUNTS and super admin only (M5). */
+  REFUNDS: {
+    LIST: `${API_BASE}/admin/refunds`,
+    approve: (id: string) => `${API_BASE}/admin/refunds/${id}/approve`,
+    reject: (id: string) => `${API_BASE}/admin/refunds/${id}/reject`,
+    complete: (id: string) => `${API_BASE}/admin/refunds/${id}/complete`,
+    fail: (id: string) => `${API_BASE}/admin/refunds/${id}/fail`,
+  },
+
   INVOICES: {
     LIST: `${API_BASE}/admin/invoices`,
     /** Shared by both audiences, same pattern as DOCUMENTS.download. */
