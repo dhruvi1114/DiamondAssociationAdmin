@@ -345,6 +345,38 @@ const unwrap = <T>(envelope: ApiEnvelope<T>): ApiResult<T> => ({
   pagination: envelope.pagination,
 });
 
+/**
+ * Fetch a file through the API and hand the browser a save.
+ *
+ * Auth is a bearer token, so a plain `<a href>` to an export would 401 — the
+ * browser has no way to attach it. The blob round-trip is what makes an
+ * authenticated download possible at all.
+ *
+ * The filename comes from the server's `Content-Disposition` where it sends one:
+ * the server is what knows the report's type and the date it was run, and a
+ * client-invented name is one rename away from disagreeing with the sheet's own
+ * caption.
+ *
+ * Lives here rather than in a service so that every export in the admin app is
+ * the same download — this was two copies before reports needed a third.
+ */
+export const downloadFile = async (url: string, fallbackName: string): Promise<void> => {
+  const response = await http.get<Blob>(url, { responseType: 'blob' });
+  const disposition = String(response.headers['content-disposition'] ?? '');
+  const match = /filename="?([^"]+)"?/.exec(disposition);
+
+  const objectUrl = URL.createObjectURL(response.data);
+  const anchor = document.createElement('a');
+
+  anchor.href = objectUrl;
+  anchor.download = match?.[1] ?? fallbackName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+};
+
 export const BaseService = {
   get: async <T>(url: string, config?: AxiosRequestConfig): Promise<ApiResult<T>> =>
     unwrap<T>((await http.get<ApiEnvelope<T>>(url, config)).data),

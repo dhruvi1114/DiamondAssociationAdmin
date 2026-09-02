@@ -1,5 +1,5 @@
 import { ENDPOINTS } from '@/constant/endpoints';
-import { BaseService, http, type ApiResult } from '@/services/BaseService';
+import { BaseService, downloadFile, http, type ApiResult } from '@/services/BaseService';
 
 /**
  * Events API (M7). Mirrors `backend/src/modules/event` exactly.
@@ -333,30 +333,6 @@ export interface QueueParams {
   /** Matched server-side across the codes, names and contacts on the row. */
   search?: string;
 }
-
-/**
- * Auth is a bearer token, so a plain link to the export would 401 — the browser
- * has no way to attach it. Fetch as a blob, then hand over a save.
- *
- * The filename comes from the server's `Content-Disposition` where it sends one,
- * because the server is what knows the event's title and the date it ran.
- */
-const downloadFile = async (url: string, fallbackName: string): Promise<void> => {
-  const response = await http.get<Blob>(url, { responseType: 'blob' });
-  const disposition = String(response.headers['content-disposition'] ?? '');
-  const match = /filename="?([^"]+)"?/.exec(disposition);
-
-  const objectUrl = URL.createObjectURL(response.data);
-  const anchor = document.createElement('a');
-
-  anchor.href = objectUrl;
-  anchor.download = match?.[1] ?? fallbackName;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-
-  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-};
 
 export const EventService = {
   list: (params?: EventListParams): Promise<ApiResult<{ rows: EventRow[] }>> =>

@@ -3,7 +3,16 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { PauseCircleOutlined, PlayCircleOutlined, StopOutlined } from '@ant-design/icons';
 import { Tooltip } from 'antd';
 import { History } from 'lucide-react';
-import { Alert, Button, Card, Drawer, ErrorState, PageHeader, Skeleton } from '@/components/ui';
+import {
+  Alert,
+  Button,
+  Card,
+  Drawer,
+  ErrorState,
+  PageHeader,
+  Skeleton,
+  Tabs,
+} from '@/components/ui';
 import { DRAWER_BODY_STYLE } from '@/components/ui/drawerChrome';
 import { resolveStatus } from '@/constant/status';
 import { usePageTitle } from '@/hooks/usePageTitle';
@@ -12,6 +21,7 @@ import MembersService, { type MemberDetail as MemberDetailRecord } from '@/servi
 import { asDisplayError, type DisplayError } from '@/utils/apiError';
 import { formatDate } from '@/utils/format';
 import MemberActivityTimeline from './MemberActivityTimeline';
+import AuditHistory from '@/components/AuditHistory';
 import MemberDocumentsPanel from './MemberDocumentsPanel';
 import ProfileTab from './ProfileTab';
 import StatusDialog, { type StatusAction } from './StatusDialog';
@@ -258,7 +268,34 @@ export const MemberDetail = () => {
           </Button>
         }
       >
-        <MemberActivityTimeline history={member.status_history} />
+        {/*
+          Two questions, two tabs, one drawer.
+
+          "Status changes" is how the MEMBERSHIP moved — the domain history the
+          member sees the consequences of. "All changes" is the audit trail:
+          every edit anybody made to this record, including the ones no status
+          moved for, like a corrected GST number or a re-verified document.
+
+          Status leads because it is what somebody opening this drawer usually
+          came for; the audit trail is what they reach for when the status
+          history does not explain what they are looking at.
+        */}
+        <Tabs
+          variant="pill"
+          queryParam="activity"
+          items={[
+            {
+              key: 'status',
+              label: 'Status Changes',
+              children: <MemberActivityTimeline history={member.status_history} />,
+            },
+            {
+              key: 'all',
+              label: 'All Changes',
+              children: <AuditHistory entityName="Members" entityId={member.id} />,
+            },
+          ]}
+        />
       </Drawer>
 
       <StatusDialog

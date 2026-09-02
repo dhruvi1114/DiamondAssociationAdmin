@@ -15,6 +15,16 @@ export interface FormDrawerProps {
   onConfirm: () => void | Promise<void>;
   onCancel: () => void;
   loading?: boolean;
+  /**
+   * Blocks the confirm while the form cannot be submitted — a required first
+   * choice not yet made, say.
+   *
+   * `disabledReason` rides with it because `Button` turns one into a tooltip: a
+   * dead control that does not say why it is dead is a control the operator has
+   * to guess at, and guessing on a submit button reads as the app being broken.
+   */
+  confirmDisabled?: boolean;
+  disabledReason?: string;
   /** 480 suits a single-column form; widen only for genuinely two-column content. */
   width?: number;
 }
@@ -41,6 +51,8 @@ export const FormDrawer = ({
   onConfirm,
   onCancel,
   loading = false,
+  confirmDisabled = false,
+  disabledReason,
   width = 480,
 }: FormDrawerProps) => {
   /*
@@ -104,7 +116,13 @@ export const FormDrawer = ({
           <Button variant="secondary" onClick={onCancel} disabled={loading}>
             {cancelLabel}
           </Button>
-          <Button variant="primary" onClick={() => void onConfirm()} loading={loading}>
+          <Button
+            variant="primary"
+            onClick={() => void onConfirm()}
+            loading={loading}
+            disabled={confirmDisabled}
+            {...(confirmDisabled && disabledReason ? { disabledReason } : {})}
+          >
             {confirmLabel}
           </Button>
         </div>

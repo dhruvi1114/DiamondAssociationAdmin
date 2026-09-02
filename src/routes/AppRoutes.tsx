@@ -24,6 +24,8 @@ import News from '@/pages/news/News';
 import NewsCategories from '@/pages/masters/NewsCategories';
 import Registrations from '@/pages/events/Registrations';
 import PaymentQueue from '@/pages/billing/PaymentQueue';
+import AuditLog from '@/pages/audit/AuditLog';
+import Reports from '@/pages/reports/Reports';
 import Placeholder from '@/pages/Placeholder';
 import SystemSettings from '@/pages/settings/SystemSettings';
 import ServerError from '@/pages/ServerError';
@@ -273,6 +275,28 @@ export const AppRoutes = () => {
           element={
             <RequirePermission anyOf={['workflow.view']}>
               <Workflow />
+            </RequirePermission>
+          }
+        />
+
+        {/* M10 — reports. `report.view` opens the screen; the Export button
+            inside it is gated separately on `report.export`. */}
+        <Route
+          path="/reports"
+          element={
+            <RequirePermission anyOf={['report.view']}>
+              <Reports />
+            </RequirePermission>
+          }
+        />
+
+        {/* M10 — the audit trail. `audit.view`, and read-only: there is no
+            detail route because there is nothing to open beyond the drawer. */}
+        <Route
+          path="/audit"
+          element={
+            <RequirePermission anyOf={['audit.view']}>
+              <AuditLog />
             </RequirePermission>
           }
         />

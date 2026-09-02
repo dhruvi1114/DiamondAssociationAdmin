@@ -1,6 +1,7 @@
-import { Button, Drawer } from '@/components/ui';
+import { Button, Drawer, Tabs } from '@/components/ui';
 import { DRAWER_BODY_STYLE } from '@/components/ui/drawerChrome';
 import type { ApplicationDetail } from '@/services/applicationsService';
+import AuditHistory from '@/components/AuditHistory';
 import ActivityTimeline from './ActivityTimeline';
 
 /**
@@ -46,7 +47,34 @@ export const ActivityDrawer = ({ open, onClose, application }: ActivityDrawerPro
       </Button>
     }
   >
-    <ActivityTimeline application={application} />
+    {/*
+      Two questions, two tabs.
+
+      "Approval history" is how the APPLICATION moved through its stages — the
+      decisions, the reasons, who took them. "All changes" is the audit trail:
+      every edit anybody made to this record, including the ones no stage moved
+      for, such as a document re-verified or a field corrected.
+
+      Approval leads because it is what a reviewer opening this drawer came for;
+      the audit trail is what they reach for when the approval history does not
+      explain what they are looking at.
+    */}
+    <Tabs
+      variant="pill"
+      queryParam="activity"
+      items={[
+        {
+          key: 'approval',
+          label: 'Approval History',
+          children: <ActivityTimeline application={application} />,
+        },
+        {
+          key: 'all',
+          label: 'All Changes',
+          children: <AuditHistory entityName="MembershipApplications" entityId={application.id} />,
+        },
+      ]}
+    />
   </Drawer>
 );
 

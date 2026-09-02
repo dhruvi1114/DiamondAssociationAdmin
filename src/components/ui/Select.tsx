@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   Checkbox as AntCheckbox,
   Input as AntInput,
@@ -198,6 +198,18 @@ export interface MultiSelectProps extends Omit<
    *  than one that keeps its name and quietly changes meaning. */
   selectAllLabel?: string;
   deselectAllLabel?: string;
+  /**
+   * Fetch the options from the server as the query changes, debounced.
+   *
+   * For a list too long to hand over whole — members, events. Without it the
+   * panel can only filter what it was already given, so a capped list silently
+   * cannot offer the three-thousandth member and nothing on screen says why.
+   *
+   * Supplying it also forces the search box on, whatever `searchThreshold`
+   * says: the caller is telling us the visible options are a page of a longer
+   * list, and hiding the box would strand the rest.
+   */
+  onSearch?: (query: string) => void;
 }
 
 /**
@@ -233,19 +245,37 @@ export const MultiSelect = ({
   deselectAllLabel = 'Deselect all',
   notFoundContent = 'No matches',
   onOpenChange,
+  onSearch,
   ...rest
 }: MultiSelectProps) => {
   const [query, setQuery] = useState('');
   const searchRef = useRef<InputRef>(null);
   const selected = value ?? [];
 
+  /*
+    Debounced, and only when the caller asked for server search. 250ms is the
+    same beat `SearchInput` uses, so typing feels identical wherever you are.
+  */
+  useEffect(() => {
+    if (!onSearch) return undefined;
+
+    const timer = window.setTimeout(() => onSearch(query.trim()), 250);
+
+    return () => window.clearTimeout(timer);
+  }, [query, onSearch]);
+
   const filtered = useMemo(() => {
+    // A server-searched list is already the answer to the query. Filtering it
+    // again locally would hide rows the server deliberately returned — a match
+    // on a field the label does not show, say.
+    if (onSearch) return options;
+
     const q = query.trim().toLowerCase();
 
     return q ? options.filter((option) => option.label.toLowerCase().includes(q)) : options;
-  }, [options, query]);
+  }, [options, query, onSearch]);
 
-  const searchable = options.length >= searchThreshold;
+  const searchable = Boolean(onSearch) || options.length >= searchThreshold;
   const togglable = filtered.filter((option) => !option.disabled).map((option) => option.value);
   const allChosen = togglable.length > 0 && togglable.every((item) => selected.includes(item));
 

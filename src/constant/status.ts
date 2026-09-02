@@ -22,12 +22,34 @@ const map: Record<string, StatusPresentation> = {
   // --- Generic (M5 masters): plain active/inactive, no domain-specific wording -
   'generic.ACTIVE': { variant: 'success', label: 'Active' },
   'generic.INACTIVE': { variant: 'neutral', label: 'Inactive' },
+  /*
+    The other two `UserStatus` values a staff account can be in (A-32). Without
+    them the chip falls back to the raw enum, and a table cell reading "BLOCKED"
+    in capitals is the one row an admin most needs to read calmly.
+
+    BLOCKED is `danger`, not `neutral`: it is the lockout state the sign-in
+    limiter sets, and it needs a different next action from a deactivation
+    somebody chose.
+  */
+  'generic.BLOCKED': { variant: 'danger', label: 'Blocked' },
+  'generic.PENDING_VERIFICATION': { variant: 'warning', label: 'Not verified' },
 
   // --- Catalogue (M2): whether a category/tier/document type is offered -------
   'catalogue.ACTIVE': { variant: 'success', label: 'Offered' },
   'catalogue.INACTIVE': { variant: 'neutral', label: 'Not offered' },
   'catalogue.REQUIRED': { variant: 'info', label: 'Required' },
   'catalogue.OPTIONAL': { variant: 'neutral', label: 'Optional' },
+
+  /*
+    Membership term (M10 renewals report). Worded from the association's side of
+    the question the report exists to answer — "is this company covered right
+    now" — which is why ACTIVE reads as "Covered" here and plain "Active" on a
+    member row: the same word would be answering two different questions.
+  */
+  'term.PENDING_PAYMENT': { variant: 'warning', label: 'Awaiting payment' },
+  'term.ACTIVE': { variant: 'success', label: 'Covered' },
+  'term.EXPIRED': { variant: 'danger', label: 'Lapsed' },
+  'term.CANCELLED': { variant: 'neutral', label: 'Cancelled' },
 
   // --- Fee (M2) --------------------------------------------------------------
   'fee.ACTIVE': { variant: 'success', label: 'Live' },

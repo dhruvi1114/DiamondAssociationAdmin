@@ -30,6 +30,9 @@ export const ENDPOINTS = {
     adminUserRoles: (id: string) => `${API_BASE}/admin/admin-users/${id}/roles`,
     adminUserRole: (id: string, roleCode: string) =>
       `${API_BASE}/admin/admin-users/${id}/roles/${roleCode}`,
+    /** Every permission the platform defines — the matrix's rows. */
+    PERMISSIONS: `${API_BASE}/admin/permissions`,
+    rolePermissions: (roleCode: string) => `${API_BASE}/admin/roles/${roleCode}/permissions`,
   },
 
   /**
@@ -182,6 +185,28 @@ export const ENDPOINTS = {
   },
 
   /** Runtime configuration a super admin may change without a deploy (M10, A-34). */
+  /** The work-queue counts on the landing page — `dashboard.view` (M10, A-02). */
+  DASHBOARD: {
+    SUMMARY: `${API_BASE}/admin/dashboard/summary`,
+  },
+
+  /**
+   * Reports (M10, screen A-29). `report.view` reads one, `report.export`
+   * downloads it — two permissions, because taking data out of the building is
+   * a different decision from reading it on screen.
+   */
+  REPORTS: {
+    LIST: `${API_BASE}/admin/reports`,
+    detail: (id: string) => `${API_BASE}/admin/reports/${id}`,
+    export: (id: string) => `${API_BASE}/admin/reports/${id}/export`,
+  },
+
+  /** The audit trail — `audit.view` (M10, screen A-35). Read-only by design. */
+  AUDIT: {
+    LIST: `${API_BASE}/admin/audit`,
+    FACETS: `${API_BASE}/admin/audit/facets`,
+  },
+
   SETTINGS: `${API_BASE}/admin/settings`,
   /**
    * The `is_public` settings, unauthenticated — the association's display name,
