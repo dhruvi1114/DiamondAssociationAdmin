@@ -74,7 +74,14 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         key: 'dashboard',
-        label: 'Work Queue',
+        /*
+          "Dashboard", not "Work Queue", since the page gained the figures and
+          the charts: the queues are now one band of it rather than the whole
+          screen. AppShell derives the header's h1 from this label, so the two
+          have to agree — a sidebar and a page title naming the same screen
+          differently is the reader's problem, not a detail.
+        */
+        label: 'Dashboard',
         path: '/',
         icon: LayoutDashboard,
         anyOf: ['dashboard.view'],

@@ -1,16 +1,30 @@
 import { Link } from 'react-router-dom';
 import {
-  BellOutlined,
   CheckCircleOutlined,
   FileTextOutlined,
   SafetyOutlined,
   SolutionOutlined,
+  TeamOutlined,
   UserSwitchOutlined,
 } from '@ant-design/icons';
-import { useEffect, useState, type ReactNode } from 'react';
-import { Button, Card, EmptyState, PageHeader } from '@/components/ui';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Card, EmptyState, PageHeader } from '@/components/ui';
 import { usePermissions } from '@/hooks/usePermissions';
-import DashboardService, { type DashboardSummary } from '@/services/dashboardService';
+import DashboardService, {
+  type DashboardCharts,
+  type DashboardKpis,
+  type DashboardSummary,
+} from '@/services/dashboardService';
+import {
+  ChartCard,
+  DashboardFilterBar,
+  KpiTile,
+  MembershipTrendChart,
+  RevenueChart,
+  TopMembersDonut,
+} from '@/components/dashboard';
+import { useDashboardFilters } from '@/hooks/useDashboardFilters';
+import { formatDate, formatMoney } from '@/utils/format';
 import { useAppSelector } from '@/store';
 
 /**
@@ -31,7 +45,13 @@ import { useAppSelector } from '@/store';
 interface QueueDefinition {
   key: string;
   label: string;
-  /** What being in this queue means, in the approver's language. */
+  /**
+   * What being in this queue means, in the approver's language.
+   *
+   * A few words, not a sentence: these render as the tile's second line beside
+   * the figure, and the long form that used to sit under a card title pushed
+   * every tile to a different height.
+   */
   description: string;
   icon: ReactNode;
   /** Visible when the admin holds at least one of these (rbac.md §3). */
@@ -50,21 +70,28 @@ interface QueueDefinition {
 }
 
 const QUEUES: QueueDefinition[] = [
-  {
-    key: 'approvals',
-    field: 'applications',
-    label: 'Applications at your stage',
-    description: 'Membership applications waiting for your decision, oldest first.',
-    icon: <SolutionOutlined />,
-    anyOf: ['application.view', 'application.approve'],
-    module: 'M4',
-    path: '/applications',
-  },
+  /*
+    "Applications at your stage" removed: the Open Applications tile above runs
+    the identical predicate (SUBMITTED + UNDER_REVIEW), so the two were the same
+    number twice under two names — and a reader seeing 5 in both places has to
+    work out whether they are looking at one queue or two.
+
+    The tile that survived is the KPI one, because it sits with the figures the
+    period filter applies to.
+  */
   {
     key: 'documents',
     field: 'documents',
-    label: 'Documents awaiting verification',
-    description: 'Uploaded KYC documents that no one has checked yet.',
+    /*
+      Short enough for one line at a sixth of the row. The hint under the figure
+      already says what "awaiting" meant, so the label does not have to — and a
+      two-line label made this tile taller than the five beside it.
+
+      "KYC Documents", not "Documents": these are identity papers, and the
+      office calls them that.
+    */
+    label: 'KYC Documents',
+    description: 'not yet checked',
     icon: <CheckCircleOutlined />,
     anyOf: ['document.verify'],
     module: 'M3',
@@ -76,23 +103,19 @@ const QUEUES: QueueDefinition[] = [
   {
     key: 'change-requests',
     field: 'changeRequests',
-    label: 'Profile change requests',
-    description: 'Members asking to change a field that needs approval.',
+    /* Matches the nav item this tile opens, so the two name the same screen. */
+    label: 'Change Requests',
+    description: 'awaiting approval',
     icon: <UserSwitchOutlined />,
     anyOf: ['member.approve_change'],
     module: 'M3',
     path: '/members/change-requests',
   },
-  {
-    key: 'invoices',
-    field: 'invoices',
-    label: 'Overdue invoices',
-    description: 'Issued invoices past their due date.',
-    icon: <FileTextOutlined />,
-    anyOf: ['invoice.view'],
-    module: 'M4',
-    path: '/billing/invoices',
-  },
+  /*
+    "Overdue invoices" removed for the same reason: the Overdue Invoices tile
+    above counts the same invoices and additionally says what they are worth,
+    which is the more useful of the two.
+  */
   /*
     Renewals card hidden at the client's request.
 
@@ -104,67 +127,61 @@ const QUEUES: QueueDefinition[] = [
       key: 'renewals',
       field: 'renewals',
       label: 'Renewals due in 30 days',
-      description: 'Memberships expiring soon, and those already in grace.',
+      description: 'expiring or in grace',
       icon: <FileTextOutlined />, // was ReloadOutlined; re-add the import when restoring
       anyOf: ['renewal.view'],
       module: 'M6',
       path: '/renewals',
     },
   */
-  {
-    key: 'notifications',
-    field: 'notifications',
-    label: 'Failed notifications',
-    description: 'Messages the outbox could not deliver after five attempts.',
-    icon: <BellOutlined />,
-    anyOf: ['notification.view'],
-    module: 'M8',
-    path: '/communication/outbox',
-  },
+  /*
+    Failed notifications tile hidden at the client's request.
+
+    Commented rather than deleted: the count behind it is live and correct — the
+    server still returns `notifications` on the summary, and the Outbox screen
+    still lists them — so restoring the tile is uncommenting this block and
+    re-adding the BellOutlined import.
+
+    {
+      key: 'notifications',
+      field: 'notifications',
+      label: 'Failed notifications',
+      description: 'undelivered after 5 tries',
+      icon: <BellOutlined />, // re-add the import when restoring
+      anyOf: ['notification.view'],
+      module: 'M8',
+      path: '/communication/outbox',
+    },
+  */
 ];
 
+/**
+ * One work queue, rendered as a KPI tile.
+ *
+ * The same tile the figures above use, deliberately: a queue count and a
+ * headline figure are both "a number worth acting on", and two card shapes on
+ * one screen made the queues read as a different kind of thing from the figures
+ * they sit under.
+ *
+ * The three count states map onto the tile's own three:
+ *   `undefined` → loading   · the request has not answered yet
+ *   `null`      → error     · it answered badly, and the tile says so
+ *   a number    → the value · including 0, which genuinely means nothing waiting
+ *
+ * A failed count must never render as `0`: that reads as "nothing to do", which
+ * is the one lie a work queue cannot tell.
+ */
 const QueueCard = ({ queue, count }: { queue: QueueDefinition; count?: number | null }) => (
-  <Card
-    title={
-      <span className="flex items-center gap-2">
-        <span className="text-fg-muted" aria-hidden="true">
-          {queue.icon}
-        </span>
-        {queue.label}
-      </span>
-    }
-    description={queue.description}
-    className="h-full"
-  >
-    {/* mt-auto pins every footer to the bottom of its card, so the row of
-        "Open" buttons lines up even though the descriptions differ in length.
-        Without it the buttons stagger and the grid reads as broken. */}
-    <div className="mt-auto flex items-center justify-between gap-4 pt-2">
-      <div>
-        {/*
-          A count only appears once the cycle behind it can produce a real one.
-          Until then no number is shown at all — not even "0", which would claim
-          the queue was checked and found empty. `undefined` is "still counting",
-          `null` is "the count could not be read", and neither may render as 0.
-        */}
-        {count === undefined ? (
-          <p className="m-0 text-14 text-fg-muted">Arrives in {queue.module}.</p>
-        ) : count === null ? (
-          <p className="m-0 text-14 text-fg-muted">Count unavailable.</p>
-        ) : (
-          <p className="m-0 text-14 text-fg">
-            <span className="tabular text-20 font-semibold">{count}</span>{' '}
-            <span className="text-fg-muted">waiting for you</span>
-          </p>
-        )}
-      </div>
-      <Link to={queue.path}>
-        <Button variant="secondary" size="small">
-          Open
-        </Button>
-      </Link>
-    </div>
-  </Card>
+  <KpiTile
+    label={queue.label}
+    icon={queue.icon}
+    // The figure itself is the link, as it is on every other tile.
+    href={queue.path}
+    value={count === undefined || count === null ? '—' : String(count)}
+    hint={queue.description}
+    loading={count === undefined}
+    error={count === null}
+  />
 );
 
 /**
@@ -181,9 +198,21 @@ const QueueCard = ({ queue, count }: { queue: QueueDefinition; count?: number | 
  */
 const SHOW_QUEUE_BOARD: boolean = true;
 
+/**
+ * The Next Event tile is switched off at the client's request. Flip to `true`
+ * to bring it back.
+ *
+ * The data behind it is untouched — `next_event` is still on the KPI response,
+ * and the Upcoming Events panel lower down reads the same rows.
+ */
+const SHOW_NEXT_EVENT: boolean = false;
+
 export const Dashboard = () => {
-  const { canAny, isSuperAdmin, permissions } = usePermissions();
+  /* `isSuperAdmin` and `permissions` went with the footnote below — restore them
+     here when that block comes back. */
+  const { canAny } = usePermissions();
   const profile = useAppSelector((state) => state.auth.profile);
+  const { filters, setFilters } = useDashboardFilters();
 
   const visible = QUEUES.filter((queue) => canAny(...queue.anyOf));
   const firstName = profile?.fullName?.split(' ')[0];
@@ -223,8 +252,35 @@ export const Dashboard = () => {
     return summary[queue.field] ?? undefined;
   };
 
+  /* The two heavier halves of the screen, fetched separately so the tiles paint
+     while a twelve-month aggregate is still running. */
+  const [kpis, setKpis] = useState<DashboardKpis | null | undefined>(undefined);
+  const [charts, setCharts] = useState<DashboardCharts | null | undefined>(undefined);
+
+  const loadFigures = useCallback(() => {
+    setKpis(undefined);
+    setCharts(undefined);
+
+    DashboardService.kpis(filters)
+      .then((res) => setKpis(res.data))
+      .catch(() => setKpis(null));
+
+    DashboardService.charts(filters)
+      .then((res) => setCharts(res.data))
+      .catch(() => setCharts(null));
+  }, [filters]);
+
+  useEffect(loadFigures, [loadFigures]);
+
+  const nextEvent = kpis?.next_event ?? null;
+
   return (
-    <div className="flex flex-col">
+    /* One rhythm for the whole page: 12px, the same gap the cards sit at.
+       Owned by this column rather than by each band's own margin — margins on
+       siblings collapse, double and drift as blocks are added, and the gap
+       between the figures and the charts had grown to 24px that way, which made
+       the two read as separate screens rather than one dashboard. */
+    <div className="flex flex-col gap-3">
       {/*
         The title stays. It is visually hidden either way — the app header draws
         the page name from the nav config — so keeping it costs nothing on screen
@@ -232,10 +288,148 @@ export const Dashboard = () => {
         keyboard navigation. Removing it would leave the page with no accessible
         name at all.
       */}
-      <PageHeader title={firstName ? `Work Queue — ${firstName}` : 'Work Queue'} />
+      <PageHeader
+        /* Matches the nav label exactly — AppShell draws the h1 from there, and
+           the greeting rides after it rather than replacing it. */
+        title={firstName ? `Dashboard — ${firstName}` : 'Dashboard'}
+        actions={<DashboardFilterBar value={filters} onChange={setFilters} />}
+      />
+
+      {/*
+        The figures, then the queues, then the charts.
+
+        Deliberate order: the figures say how the association is doing, the
+        queues say what needs doing about it, and the charts explain both. A
+        reader who stops after the first row has still read the useful part.
+      */}
+      {/*
+        One row, not two.
+
+        The queue tiles were a second band under the figures, which read as a
+        different kind of thing — but a queue count and a headline figure are
+        both "a number worth acting on", and two of them were literally the same
+        number under two names. One grid, and the permission-scoped queue tiles
+        simply take the places after the figures.
+      */}
+      {/*
+        Six across from `xl` up, not `2xl`.
+
+        A laptop at 1280–1440 is the common width here, and at `2xl` the row
+        broke into two bands of three on exactly those screens — which is the
+        layout this row was merged to get rid of. Six tiles at 1280 is ~200px
+        each: enough for the figure, with the longer labels wrapping to two
+        lines rather than truncating.
+      */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6 [&>*]:h-full">
+        <KpiTile
+          label="Active Members"
+          icon={<TeamOutlined />}
+          value={kpis ? kpis.active_members.value.toLocaleString('en-IN') : '—'}
+          delta={kpis?.active_members.delta_pct}
+          href="/members?status=ACTIVE"
+          loading={kpis === undefined}
+          error={kpis === null}
+          onRetry={loadFigures}
+        />
+
+        <KpiTile
+          label="Overdue Invoices"
+          icon={<FileTextOutlined />}
+          value={kpis ? formatMoney(String(kpis.overdue_amount.value)) : '—'}
+          delta={kpis?.overdue_amount.delta_pct}
+          /* A rise in money owed is bad news, so the colour flips while the
+             arrow still follows the number. */
+          invertDelta
+          hint={
+            kpis
+              ? `${kpis.overdue_invoice_count} ${kpis.overdue_invoice_count === 1 ? 'invoice' : 'invoices'}`
+              : undefined
+          }
+          href="/billing/invoices"
+          loading={kpis === undefined}
+          error={kpis === null}
+          onRetry={loadFigures}
+        />
+
+        <KpiTile
+          label="Collected"
+          icon={<FileTextOutlined />}
+          value={kpis ? formatMoney(String(kpis.collected.value)) : '—'}
+          delta={kpis?.collected.delta_pct}
+          href="/billing/payments"
+          loading={kpis === undefined}
+          error={kpis === null}
+          onRetry={loadFigures}
+        />
+
+        <KpiTile
+          label="Open Applications"
+          icon={<SolutionOutlined />}
+          value={kpis ? String(kpis.open_applications.value) : '—'}
+          /* No delta ever on this one: it is a queue as it stands, and last
+             month's queue tells nobody anything they can act on. */
+          hint={
+            kpis && kpis.stale_applications > 0
+              ? `${kpis.stale_applications} waiting over 14 days`
+              : undefined
+          }
+          href="/applications"
+          loading={kpis === undefined}
+          error={kpis === null}
+          onRetry={loadFigures}
+        />
+
+        {/* Next Event tile hidden at the client's request. A flag rather than a
+            comment block: the card carries a JSX comment of its own, and one
+            comment inside another closes the outer one early. The flag also keeps
+            the markup type-checking while it is off. */}
+        {SHOW_NEXT_EVENT ? (
+          <Card className="h-full">
+            <span className="text-supporting text-fg-muted">Next Event</span>
+            {nextEvent ? (
+              <>
+                <Link
+                  to={`/events/${nextEvent.id}`}
+                  className="mt-1 block text-title-secondary text-fg no-underline hover:underline"
+                >
+                  {nextEvent.title}
+                </Link>
+                <p className="m-0 mt-1 text-12 text-fg-muted">
+                  {formatDate(nextEvent.start_at)}
+                  {nextEvent.city ? ` · ${nextEvent.city}` : ''}
+                </p>
+                <p className="m-0 mt-1 text-12 text-fg">
+                  {/* Seats LEFT, not seats taken: the number anybody asks about is
+          how many are still available. Unlimited says so rather than
+          showing a misleading figure. */}
+                  {nextEvent.capacity === null
+                    ? `${nextEvent.booked} booked · no seat limit`
+                    : `${Math.max(0, nextEvent.capacity - nextEvent.booked)} / ${nextEvent.capacity} seats left`}
+                </p>
+              </>
+            ) : (
+              <p className="m-0 mt-2 text-supporting text-fg-muted">
+                {kpis === undefined ? 'Loading…' : 'Nothing scheduled.'}
+              </p>
+            )}
+          </Card>
+        ) : null}
+
+        {/* The queues this admin may act on, in the same row as the figures.
+            The server returns only the tiles their permissions allow, so the
+            row is shorter for a narrower role rather than showing dead cards. */}
+        {SHOW_QUEUE_BOARD
+          ? visible.map((queue) => (
+              <QueueCard key={queue.key} queue={queue} count={countFor(queue)} />
+            ))
+          : null}
+      </div>
 
       {SHOW_QUEUE_BOARD ? (
         <>
+          {/* Said once, and only when there is genuinely nothing: the figures
+              above still render, so this explains the missing queues rather
+              than standing in for an empty screen. */}
           {visible.length === 0 ? (
             <Card flush>
               <EmptyState
@@ -244,19 +438,121 @@ export const Dashboard = () => {
                 description="Your account is active but its role does not include any of the work queues. A super admin can change that under Configure → Staff accounts."
               />
             </Card>
-          ) : (
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 [&>*]:h-full">
-              {visible.map((queue) => (
-                <QueueCard key={queue.key} queue={queue} count={countFor(queue)} />
-              ))}
-            </div>
-          )}
+          ) : null}
 
-          <p className="m-0 mt-6 text-12 text-fg-subtle">
+          <div className="grid gap-3 xl:grid-cols-3 [&>*]:h-full">
+            <div className="xl:col-span-2">
+              <ChartCard
+                title="Membership Trend"
+                description="Headcount at each month end, with joins and lapses — last 12 months"
+                loading={charts === undefined}
+                error={charts === null}
+                onRetry={loadFigures}
+                empty={charts?.membership_trend.length === 0}
+              >
+                {charts ? <MembershipTrendChart data={charts.membership_trend} /> : null}
+              </ChartCard>
+            </div>
+
+            <ChartCard
+              title="Top Members"
+              description="Share of total membership tenure"
+              loading={charts === undefined}
+              error={charts === null}
+              onRetry={loadFigures}
+              empty={charts?.top_members.length === 0}
+              emptyMessage="No membership terms have run yet, so there is no tenure to divide."
+            >
+              {charts ? (
+                <TopMembersDonut
+                  members={charts.top_members}
+                  otherSharePct={charts.other_share_pct}
+                />
+              ) : null}
+            </ChartCard>
+
+            <ChartCard
+              title="Upcoming Events"
+              description="The next few published events"
+              loading={charts === undefined}
+              error={charts === null}
+              onRetry={loadFigures}
+              empty={charts?.upcoming_events.length === 0}
+              emptyMessage="Nothing is scheduled. A published event appears here as soon as it has a date."
+            >
+              <ul className="m-0 flex list-none flex-col gap-3 p-0">
+                {(charts?.upcoming_events ?? []).map((event) => (
+                  <li key={event.id} className="flex min-w-0 flex-col">
+                    <Link
+                      to={`/events/${event.id}`}
+                      className="truncate text-supporting text-fg no-underline hover:underline"
+                    >
+                      {event.title}
+                    </Link>
+                    <span className="text-12 text-fg-muted">
+                      {formatDate(event.start_at)}
+                      {event.city ? ` · ${event.city}` : ''}
+                      {event.capacity === null
+                        ? ` · ${event.booked} booked`
+                        : ` · ${Math.max(0, event.capacity - event.booked)} / ${event.capacity} seats left`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </ChartCard>
+            <div className="xl:col-span-2">
+              <ChartCard
+                title="Revenue Overview"
+                description="Invoiced against received, for the selected period"
+                loading={charts === undefined}
+                error={charts === null}
+                onRetry={loadFigures}
+                empty={charts?.revenue.buckets.every(
+                  (b) => b.billed === '0' && b.collected === '0',
+                )}
+                emptyMessage="No invoices were raised and no payments landed in this period."
+              >
+                {charts ? (
+                  <>
+                    {/* The four figures the chart is a picture of. Above it, so a
+                        reader who wants the number does not have to read a bar. */}
+                    <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      {[
+                        ['Total Billed', charts.revenue.billed],
+                        ['Total Collected', charts.revenue.collected],
+                        ['Pending', charts.revenue.pending],
+                        ['Refunded', charts.revenue.refunded],
+                      ].map(([label, amount]) => (
+                        <div key={label} className="flex flex-col">
+                          <span className="text-11 uppercase tracking-[0.04em] text-fg-muted">
+                            {label}
+                          </span>
+                          <span className="tabular text-supporting font-medium text-fg">
+                            {formatMoney(String(amount))}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <RevenueChart buckets={charts.revenue.buckets} grain={charts.revenue.grain} />
+                  </>
+                ) : null}
+              </ChartCard>
+            </div>
+          </div>
+
+          {/*
+            Permissions footnote hidden at the client's request.
+
+            It said, for a super admin, that every check is bypassed and each
+            bypass is recorded — true, and still true: the bypass is still
+            audited. Only the line is gone.
+
+            <p className="m-0 mt-3 text-12 text-fg-subtle">
             {isSuperAdmin
-              ? 'Signed in as a super admin — every permission check is bypassed and each bypass is recorded in the audit log.'
-              : `${permissions.length} permissions held.`}
-          </p>
+            ? 'Signed in as a super admin — every permission check is bypassed and each bypass is recorded in the audit log.'
+            : `${permissions.length} permissions held.`}
+            </p>
+          */}
         </>
       ) : null}
     </div>

@@ -188,6 +188,8 @@ export const ENDPOINTS = {
   /** The work-queue counts on the landing page — `dashboard.view` (M10, A-02). */
   DASHBOARD: {
     SUMMARY: `${API_BASE}/admin/dashboard/summary`,
+    KPIS: `${API_BASE}/admin/dashboard/kpis`,
+    CHARTS: `${API_BASE}/admin/dashboard/charts`,
   },
 
   /**

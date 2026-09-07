@@ -178,6 +178,46 @@ export const status = {
 
 export type StatusVariant = keyof typeof status.light;
 
+/**
+ * Chart-only values.
+ *
+ * Charts read the live CSS variables at render time (see
+ * `components/dashboard/chartTheme.ts`), so almost nothing belongs here. Two
+ * things do:
+ *
+ *  - **`fallback`** — what a chart uses before the document exists, in tests and
+ *    on first paint. The light values, so a chart rendered without a theme looks
+ *    like the app rather than like nothing.
+ *  - **`donut`** — a neutral ramp for share-of-whole slices. Deliberately NOT
+ *    the status palette: a share of tenure is neither good news nor bad news,
+ *    and colouring the largest slice green would say something about it that is
+ *    not true. Darkest first, so the biggest slice reads as the most prominent
+ *    without implying a judgement.
+ */
+export const chart = {
+  fallback: {
+    primary: semantic.light.primary,
+    success: status.light.success.fg,
+    warning: status.light.warning.fg,
+    danger: status.light.danger.fg,
+    info: status.light.info.fg,
+    muted: neutral.light[500],
+    border: neutral.light[200],
+    surface: semantic.light.surface,
+  },
+  /*
+    Steps off the existing neutral ramp rather than five invented greys, so a
+    donut sits in the same family as every border and muted label around it.
+  */
+  donut: [
+    neutral.light[700],
+    neutral.light[500],
+    neutral.light[400],
+    neutral.light[300],
+    neutral.light[200],
+  ],
+} as const;
+
 /** Borders do the work, not shadows — one elevation for cards, one for overlays. */
 export const elevation = {
   card: '0 1px 2px rgb(0 0 0 / 0.04)',
