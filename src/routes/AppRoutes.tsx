@@ -7,6 +7,7 @@ import ApplicationQueue from '@/pages/applications/ApplicationQueue';
 import ApplicationReview from '@/pages/applications/ApplicationReview';
 import Invoices from '@/pages/billing/Invoices';
 import Refunds from '@/pages/billing/Refunds';
+import Enquiries from '@/pages/communication/Enquiries';
 import Dashboard from '@/pages/Dashboard';
 import Categories from '@/pages/masters/Categories';
 import CompanyTypes from '@/pages/masters/CompanyTypes';
@@ -14,6 +15,7 @@ import EventTypes from '@/pages/masters/EventTypes';
 import RegistrationDetail from '@/pages/events/RegistrationDetail';
 import DocumentTypes from '@/pages/masters/DocumentTypes';
 import Fees from '@/pages/masters/Fees';
+import FeeStructures from '@/pages/masters/FeeStructures';
 import Locations from '@/pages/masters/Locations';
 import Forbidden from '@/pages/Forbidden';
 import Login from '@/pages/Login';
@@ -175,6 +177,20 @@ export const AppRoutes = () => {
             </RequirePermission>
           }
         />
+        {/*
+          The redesigned price list (docs/specs/2026-09-07-membership-fee-plans.md).
+          It sits beside the old screen rather than replacing it: the two data
+          shapes coexist until the backend lands, and a swap that breaks the
+          working screen on the way is not a swap anyone can review.
+        */}
+        <Route
+          path="/masters/fee-plans/*"
+          element={
+            <RequirePermission anyOf={['fee.view']}>
+              <FeeStructures />
+            </RequirePermission>
+          }
+        />
         <Route
           path="/masters/document-types/*"
           element={
@@ -319,6 +335,16 @@ export const AppRoutes = () => {
           }
         />
 
+        {/* M8 — enquiries from the public contact form. */}
+        <Route
+          path="/communication/enquiries"
+          element={
+            <RequirePermission anyOf={['enquiry.view']}>
+              <Enquiries />
+            </RequirePermission>
+          }
+        />
+
         {/*
           M5 — the refund queue. The nav has advertised this path since the
           billing group was written; until now it led nowhere.
@@ -399,6 +425,7 @@ export const AppRoutes = () => {
                   '/masters/categories',
                   '/settings/system',
                   '/masters/fees',
+                  '/masters/fee-plans',
                   '/masters/document-types',
                   '/masters/company-types',
                   '/masters/event-types',
@@ -411,6 +438,8 @@ export const AppRoutes = () => {
                   '/events',
                   '/registrations',
                   '/billing/payments',
+                  '/billing/refunds',
+                  '/communication/enquiries',
                 ].includes(item.path),
             )
             .map((item) => (

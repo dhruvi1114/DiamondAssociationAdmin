@@ -103,6 +103,12 @@ export const ENDPOINTS = {
   },
 
   /** Every invoice, org-wide (M5, A-14). */
+  /** Enquiries from the public contact form — `enquiry.view` / `enquiry.manage`. */
+  ENQUIRIES: {
+    LIST: `${API_BASE}/admin/contact-enquiries`,
+    status: (id: string) => `${API_BASE}/admin/contact-enquiries/${id}/status`,
+  },
+
   /** The refund queue — `refund.manage`, ACCOUNTS and super admin only (M5). */
   REFUNDS: {
     LIST: `${API_BASE}/admin/refunds`,
@@ -169,6 +175,13 @@ export const ENDPOINTS = {
     FEES: `${API_BASE}/admin/fee-structures`,
     fee: (id: string) => `${API_BASE}/admin/fee-structures/${id}`,
     FEE_RESOLVE: `${API_BASE}/admin/fee-structures/resolve`,
+    /*
+      M2 redesign (docs/specs/2026-09-07-membership-fee-plans.md). A separate
+      path from FEES above, deliberately: the two shapes coexist until the old
+      screen is retired, and a shared path would make that swap a big-bang one.
+    */
+    FEE_PLAN_STRUCTURES: `${API_BASE}/admin/fee-plans`,
+    feePlanStructure: (id: string) => `${API_BASE}/admin/fee-plans/${id}`,
     COMPANY_TYPES: `${API_BASE}/admin/company-types`,
     companyType: (id: string) => `${API_BASE}/admin/company-types/${id}`,
     /* M7 — the kinds of event the association runs. Staff-maintained. */

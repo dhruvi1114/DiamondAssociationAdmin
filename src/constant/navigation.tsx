@@ -7,6 +7,7 @@ import {
   FileCheck2,
   FileText,
   Building2,
+  Inbox,
   Layers,
   LayoutDashboard,
   LayoutTemplate,
@@ -211,6 +212,14 @@ export const NAV_GROUPS: NavGroup[] = [
         module: 'M9',
       },
       {
+        key: 'enquiries',
+        label: 'Enquiries',
+        path: '/communication/enquiries',
+        icon: Inbox,
+        anyOf: ['enquiry.view'],
+        module: 'M8',
+      },
+      {
         key: 'templates',
         label: 'Templates',
         path: '/communication/templates',
@@ -234,16 +243,16 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         key: 'categories',
-        label: 'Categories',
+        label: 'Company Categories',
         path: '/masters/categories',
         icon: Layers,
         anyOf: ['category.view'],
         module: 'M2',
       },
       {
-        key: 'fees',
-        label: 'Fee Structures',
-        path: '/masters/fees',
+        key: 'fee-plans',
+        label: 'Fee Plans',
+        path: '/masters/fee-plans',
         icon: Tags,
         anyOf: ['fee.view'],
         module: 'M2',

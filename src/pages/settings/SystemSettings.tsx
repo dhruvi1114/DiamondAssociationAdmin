@@ -219,6 +219,10 @@ const COPY: Record<string, SettingCopy> = {
     multiline: true,
     full: true,
   },
+  'organisation.phone': {
+    label: 'Office phone',
+    help: 'Shown on the public contact page beside the address. Displayed, never dialled by the platform — write it the way somebody should read it out.',
+  },
   'organisation.address': {
     label: 'Registered address',
     help: 'Printed under the legal name on every invoice and receipt. Type it the way it should appear, one line per line.',
@@ -316,6 +320,7 @@ const ROW_ORDER = [
   'organisation.logo_mark',
   'organisation.signature',
   'organisation.address',
+  'organisation.phone',
   // Billing. The invoice, then the term, then the fee — and the fee's amount
   // immediately after the switch that reveals it — then the rest of "day to
   // day operation": the one remaining delivery channel, the application and

@@ -56,6 +56,9 @@ const map: Record<string, StatusPresentation> = {
   'fee.SCHEDULED': { variant: 'info', label: 'Scheduled' },
   'fee.CLOSED': { variant: 'neutral', label: 'Closed' },
   'fee.INACTIVE': { variant: 'neutral', label: 'Retired' },
+  /* A cycle with no price on it at all — distinct from one whose price is
+     retired, which still bills the members already on it. */
+  'fee.UNPUBLISHED': { variant: 'neutral', label: 'Not published' },
 
   // --- Directory (M9): whether a company appears in the member directory ------
   /*
@@ -134,6 +137,10 @@ const map: Record<string, StatusPresentation> = {
   'payment.CANCELLED': { variant: 'neutral', label: 'Cancelled' },
   'payment.REFUNDED': { variant: 'warning', label: 'Refunded' },
   'payment.PARTIALLY_REFUNDED': { variant: 'warning', label: 'Partly refunded' },
+
+  // --- Contact enquiry --------------------------------------------------------
+  'enquiry.NEW': { variant: 'info', label: 'New' },
+  'enquiry.HANDLED': { variant: 'success', label: 'Handled' },
 
   // --- Refund ----------------------------------------------------------------
   // "Requested" is info, not warning: it is the ordinary state of a new refund,

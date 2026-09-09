@@ -408,6 +408,22 @@ export interface ApplicationDetail {
 
   category: { id: string; code: string; name: string } | null;
   tier: { id: string; code: string; name: string } | null;
+  /**
+   * The plan the applicant chose on the membership page, when they came that way.
+   *
+   * Null for an application entered by staff, or one made before fee plans existed — both price
+   * the old way at approval, so the panel simply does not render rather than inventing a figure.
+   */
+  fee_plan: {
+    id: string;
+    name: string;
+    billing_cycle: 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY';
+    amount: string;
+    renewal_amount: string;
+    tax_rate: string;
+    currency: string;
+    is_active: boolean;
+  } | null;
   /** The DRAFT member row created when the journey started (ADR-016). */
   member: {
     id: string;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Ban, Building2, CalendarDays, CheckCircle2 } from 'lucide-react';
 import { Form, Input } from 'antd';
@@ -103,14 +103,14 @@ const BANNER: Partial<Record<number, { variant: 'warning' | 'danger' | 'info'; m
  * single edge whatever the labels are. Money read in a column is compared; money
  * that zig-zags because one label is longer is read one row at a time.
  */
-const MoneyRow = ({
+const SummaryRow = ({
   label,
-  amount,
   tone = 'normal',
+  children,
 }: {
   label: string;
-  amount: string;
   tone?: 'normal' | 'paid' | 'owed';
+  children: ReactNode;
 }) => (
   <div className="flex items-baseline justify-between gap-3">
     <span
@@ -125,9 +125,31 @@ const MoneyRow = ({
         tone === 'owed' ? 'text-status-danger-fg' : 'text-fg',
       ].join(' ')}
     >
-      <MoneyText amount={amount} />
+      {children}
     </span>
   </div>
+);
+
+/**
+ * A money line, which is every line in this card but one.
+ *
+ * A thin wrapper rather than a second component with the same layout: the seat
+ * count is not money and cannot go through `MoneyText`, but it has to line up on
+ * the same right edge as the figures under it or the column stops being a
+ * column.
+ */
+const MoneyRow = ({
+  label,
+  amount,
+  tone = 'normal',
+}: {
+  label: string;
+  amount: string;
+  tone?: 'normal' | 'paid' | 'owed';
+}) => (
+  <SummaryRow label={label} tone={tone}>
+    <MoneyText amount={amount} />
+  </SummaryRow>
 );
 
 const addressLine = (record: RegistrationRecord): string | null =>
@@ -657,6 +679,14 @@ export const RegistrationDetail = () => {
                   the only figures that matter beside them — what has arrived and
                   what is still owed.
                 */}
+                {/*
+                  What the bill is built from, above the figures it produced.
+                  The seat count appears twice on this screen — the stepper and
+                  the Actions card both carry it — but neither is beside the
+                  subtotal, and "is ₹2,000 right?" is a question about seats
+                  times price that could not be answered without scrolling up.
+                */}
+                <SummaryRow label="Seats">{booking.attendee_count}</SummaryRow>
                 <MoneyRow label="Subtotal" amount={booking.subtotal} />
                 <MoneyRow label="Tax" amount={booking.tax_amount} />
                 <div className="mt-1 border-t border-border pt-2">

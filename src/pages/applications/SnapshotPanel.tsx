@@ -1,7 +1,7 @@
-import { Building2, IdCard } from 'lucide-react';
+import { Building2, IdCard, Tags } from 'lucide-react';
 import { Card, StatusChip } from '@/components/ui';
 import type { ApplicationDetail } from '@/services/applicationsService';
-import { formatDateTime } from '@/utils/format';
+import { formatDateTime, formatMoney } from '@/utils/format';
 import { Field, Group } from '@/components/ui/DetailFields';
 
 /**
@@ -38,6 +38,17 @@ export interface SnapshotPanelProps {
   application: ApplicationDetail;
 }
 
+const CYCLE_LABEL: Record<'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY', string> = {
+  MONTHLY: 'Monthly',
+  QUARTERLY: 'Quarterly',
+  HALF_YEARLY: '6 Months',
+  YEARLY: 'Yearly',
+};
+
+/** Tax-inclusive, because that is the figure the invoice will carry. */
+const withTax = (net: string, taxRate: string): string =>
+  (Number(net) * (1 + Number(taxRate) / 100)).toFixed(2);
+
 export const SnapshotPanel = ({ application }: SnapshotPanelProps) => {
   const member = application.member;
   const registered = member?.addresses?.find((row) => row.address_type === 'REGISTERED');
@@ -61,6 +72,48 @@ export const SnapshotPanel = ({ application }: SnapshotPanelProps) => {
             <Field label="Tier" value={application.tier?.name} />
           </Group>
         */}
+
+        {/*
+          The plan, and both of its prices.
+          
+          Category and Tier above are hidden at the client's request; this is not the same thing
+          coming back. It is money: the reviewer is about to raise an invoice, and until now the
+          price was resolved silently inside activation and first became visible on the invoice it
+          produced. The renewal figure is here too, because approving somebody commits the
+          association to that price a year later and it should not be a surprise then.
+        */}
+        {application.fee_plan ? (
+          <Group
+            icon={<Tags size={16} strokeWidth={1.5} />}
+            title="Membership Plan"
+            description="What this applicant chose on the website, and what approving them will bill."
+          >
+            <Field
+              label="Plan"
+              value={`${application.fee_plan.name} · ${CYCLE_LABEL[application.fee_plan.billing_cycle]}`}
+            />
+            <Field
+              label="To join"
+              value={formatMoney(
+                withTax(application.fee_plan.amount, application.fee_plan.tax_rate),
+                application.fee_plan.currency,
+              )}
+            />
+            <Field
+              label="Renews at"
+              value={formatMoney(
+                withTax(application.fee_plan.renewal_amount, application.fee_plan.tax_rate),
+                application.fee_plan.currency,
+              )}
+            />
+            {!application.fee_plan.is_active ? (
+              <Field
+                label="Warning"
+                value="This plan has been retired since the applicant chose it. Approval will be refused rather than billing a price that is no longer offered."
+              />
+            ) : null}
+          </Group>
+        ) : null}
 
         <Group icon={<Building2 size={16} strokeWidth={1.5} />} title="Company Information">
           {/*

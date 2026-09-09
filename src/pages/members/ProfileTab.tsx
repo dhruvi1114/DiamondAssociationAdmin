@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Building2, Download, IdCard, Receipt as ReceiptIcon } from 'lucide-react';
+import { Building2, Download, IdCard, Receipt as ReceiptIcon, Tags } from 'lucide-react';
 import { Form, Input, Switch, Tooltip } from 'antd';
 import {
   Alert,
@@ -27,7 +27,7 @@ import MembersService, {
   type MemberInvoice,
 } from '@/services/membersService';
 import { asDisplayError } from '@/utils/apiError';
-import { formatDate } from '@/utils/format';
+import { formatDate, formatMoney } from '@/utils/format';
 
 /**
  * A-08 · Profile tab — everything the federation knows about the company.
@@ -48,7 +48,21 @@ export interface ProfileTabProps {
   onChanged: () => void;
 }
 
+const CYCLE_LABEL: Record<'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY', string> = {
+  MONTHLY: 'Monthly',
+  QUARTERLY: 'Quarterly',
+  HALF_YEARLY: '6 Months',
+  YEARLY: 'Yearly',
+};
+
+/** Tax-inclusive, because that is the figure the renewal invoice will carry. */
+const withTax = (net: string, taxRate: string): string =>
+  (Number(net) * (1 + Number(taxRate) / 100)).toFixed(2);
+
 export const ProfileTab = ({ member, onChanged }: ProfileTabProps) => {
+  /* Newest expiry first, at most one — the repository already takes only that row. */
+  const currentTerm = member.terms?.[0] ?? null;
+
   const { can } = usePermissions();
   // Unused while the Edit profile action is commented out; kept because the
   // drawer it gated is still here.
@@ -380,6 +394,52 @@ export const ProfileTab = ({ member, onChanged }: ProfileTabProps) => {
           </div>
         </Group>
       </Card>
+
+      {/*
+        What this member pays, and what they will pay next.
+
+        It is here rather than only on the invoice list because the question is asked on the
+        phone: "what am I on, and what does it renew at?" Deriving that from a list of past
+        invoices means reading the most recent one and hoping the price has not moved since.
+        The plan row answers both halves from the same place that priced the term.
+      */}
+      {currentTerm ? (
+        <Card>
+          <Group
+            icon={<Tags size={16} strokeWidth={1.5} />}
+            title="Membership plan"
+            description="The plan this term was priced from, and what it renews at."
+          >
+            <Field
+              label="Plan"
+              value={
+                currentTerm.fee_plan
+                  ? `${currentTerm.fee_plan.name} · ${CYCLE_LABEL[currentTerm.fee_plan.billing_cycle]}`
+                  : null
+              }
+            >
+              {currentTerm.fee_plan ? null : <NotAvailable label="Priced before plans existed" />}
+            </Field>
+            <Field
+              label="Term"
+              value={`${formatDate(currentTerm.valid_from)} — ${formatDate(currentTerm.valid_till)}`}
+            />
+            <Field
+              label="Renews at"
+              value={
+                currentTerm.fee_plan
+                  ? formatMoney(
+                      withTax(currentTerm.fee_plan.renewal_amount, currentTerm.fee_plan.tax_rate),
+                      currentTerm.fee_plan.currency,
+                    )
+                  : null
+              }
+            >
+              {currentTerm.fee_plan ? null : <NotAvailable label="No renewal price recorded" />}
+            </Field>
+          </Group>
+        </Card>
+      ) : null}
 
       <Card>
         <Group icon={<IdCard size={16} strokeWidth={1.5} />} title="Identity & registration">

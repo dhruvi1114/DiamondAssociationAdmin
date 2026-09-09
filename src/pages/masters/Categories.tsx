@@ -222,7 +222,7 @@ const CategoriesTab = ({ onRegisterCreate, onRegisterSearch }: TabBodyProps) => 
         <SearchInput
           value={search}
           onChange={onSearch}
-          label="Search categories"
+          label="Search company categories"
           placeholder="Search code or name…"
           className="min-w-0 w-full max-w-[240px] sm:w-[240px]"
         />
@@ -280,7 +280,7 @@ const CategoriesTab = ({ onRegisterCreate, onRegisterSearch }: TabBodyProps) => 
   }, [form]);
 
   const createAction = useMemo<CreateAction | null>(
-    () => (canManage ? { label: 'Add category', onClick: openCreate } : null),
+    () => (canManage ? { label: 'Add company category', onClick: openCreate } : null),
     [canManage, openCreate],
   );
 
@@ -348,12 +348,12 @@ const CategoriesTab = ({ onRegisterCreate, onRegisterSearch }: TabBodyProps) => 
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col gap-4">
-      {/* No toolbar row: the "Add category" button is registered above and drawn
+      {/* No toolbar row: the "Add company category" button is registered above and drawn
           on the tab row. No card title either — the tab already names this list
           and a third heading on one screen is noise (layout.md page anatomy). */}
       <Card flush className="min-h-0 min-w-0 flex-1">
         <DataTable<Category>
-          unit="categories"
+          unit="company categories"
           serial
           rowKey="id"
           loading={loading}
@@ -372,9 +372,11 @@ const CategoriesTab = ({ onRegisterCreate, onRegisterSearch }: TabBodyProps) => 
             onSearch('');
             clearFilters();
           }}
-          emptyTitle="No categories yet"
-          emptyDescription="Membership categories are the federation's own vocabulary — Grower, Manufacturer, Trader. Add the first one to make it selectable on the application form."
-          emptyAction={canManage ? <Button onClick={openCreate}>Add category</Button> : undefined}
+          emptyTitle="No company categories yet"
+          emptyDescription="Company categories are the federation's own vocabulary — Grower, Manufacturer, Trader. Add the first one to make it selectable on the application form."
+          emptyAction={
+            canManage ? <Button onClick={openCreate}>Add company category</Button> : undefined
+          }
           columns={[
             {
               /*
@@ -479,21 +481,21 @@ const CategoriesTab = ({ onRegisterCreate, onRegisterSearch }: TabBodyProps) => 
                           {
                             key: 'edit',
                             icon: <Pencil size={16} strokeWidth={1.5} />,
-                            label: 'Edit category',
+                            label: 'Edit company category',
                             onClick: () => openEdit(row),
                           },
                           row.is_active
                             ? {
                                 key: 'deactivate',
                                 icon: <Ban size={16} strokeWidth={1.5} />,
-                                label: 'Deactivate category',
+                                label: 'Deactivate company category',
                                 danger: true,
                                 onClick: () => toggle.ask(row),
                               }
                             : {
                                 key: 'activate',
                                 icon: <CheckCircle2 size={16} strokeWidth={1.5} />,
-                                label: 'Activate category',
+                                label: 'Activate company category',
                                 success: true,
                                 onClick: () => toggle.ask(row),
                               },
@@ -514,7 +516,7 @@ const CategoriesTab = ({ onRegisterCreate, onRegisterSearch }: TabBodyProps) => 
       */}
       <ConfirmDialog
         open={toggle.target !== null}
-        title={`${toggle.target?.is_active ? 'Deactivate' : 'Activate'} ${toggle.target?.name ?? 'this category'}?`}
+        title={`${toggle.target?.is_active ? 'Deactivate' : 'Activate'} ${toggle.target?.name ?? 'this company category'}?`}
         description={
           toggle.target?.is_active
             ? 'It stops appearing as a Business Nature choice on new registrations. Existing members keep it.'
@@ -528,7 +530,7 @@ const CategoriesTab = ({ onRegisterCreate, onRegisterSearch }: TabBodyProps) => 
 
       <FormDrawer
         open={open}
-        title={editing ? `Edit ${editing.name}` : 'Add category'}
+        title={editing ? `Edit ${editing.name}` : 'Add company category'}
         confirmLabel={editing ? 'Save' : 'Create'}
         loading={saving}
         onCancel={() => setOpen(false)}
@@ -570,7 +572,7 @@ const CategoriesTab = ({ onRegisterCreate, onRegisterSearch }: TabBodyProps) => 
                   label="Code"
                   help={
                     editing
-                      ? 'Fixed when the category was created. Other records point at it.'
+                      ? 'Fixed when the company category was created. Other records point at it.'
                       : 'Capitals, digits and underscores. Cannot be changed later.'
                   }
                 />
@@ -1115,7 +1117,7 @@ export const Categories = () => {
     */
     <div className="flex h-full min-h-0 min-w-0 flex-col">
       <PageHeader
-        title="Categories"
+        title="Company Categories"
         actions={
           <>
             {searchBox}

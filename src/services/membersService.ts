@@ -150,6 +150,28 @@ export interface MemberDetail {
   contacts: MemberContact[];
   addresses: MemberAddress[];
   invoices: MemberInvoice[];
+  /**
+   * The current term and the plan that priced it — newest expiry first, at most one.
+   *
+   * `fee_plan` is null for a term created before fee plans existed, or one priced the old way.
+   * The panel renders what it has rather than inventing a renewal figure it cannot source.
+   */
+  terms?: {
+    id: string;
+    term_type: string;
+    valid_from: string;
+    valid_till: string;
+    status: string;
+    fee_plan: {
+      id: string;
+      name: string;
+      billing_cycle: 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY';
+      amount: string;
+      renewal_amount: string;
+      tax_rate: string;
+      currency: string;
+    } | null;
+  }[];
   status_history: MemberStatusHistoryRow[];
   change_requests: MemberChangeRequest[];
 }
