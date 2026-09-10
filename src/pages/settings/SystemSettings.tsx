@@ -213,6 +213,21 @@ const COPY: Record<string, SettingCopy> = {
     label: 'Member Directory',
     help: 'On lets active members search the directory and contact each other. Off closes it for everyone and shows members an explanatory screen — it does not change any member’s own listing choice, and it never makes anything public. The directory is only ever visible to members whose membership is active.',
   },
+  /*
+    The two guest-booking switches.
+
+    Both are OFF until the work behind them is finished, and both are written so
+    the person reading this screen can tell what turning one ON actually does to
+    somebody outside the association — not what it does to the code.
+  */
+  'events.guest_booking_otp': {
+    label: 'Verify Guest Email',
+    help: 'On asks a guest to confirm their company email with an emailed code before their event booking is taken. Off books without checking the address — those bookings are then never proven, and cannot be attached to the company’s member account later. Turning it off does not undo bookings already verified.',
+  },
+  'events.booking_lookup_enabled': {
+    label: 'Find My Bookings',
+    help: 'On serves the public page where a guest enters their email, receives a code, and sees every booking and invoice made with that address. Off hides the page — a guest can then only reach a booking through the link emailed to them at the time, which stops working after 30 days.',
+  },
   'registration.consent_text': {
     label: 'Registration consent text',
     help: 'Shown beside the checkbox an applicant must tick to submit the registration form. Leave blank to print nothing beyond the checkbox itself.',
@@ -292,7 +307,49 @@ const COPY: Record<string, SettingCopy> = {
   },
 };
 
-const labelOf = (key: string) => COPY[key]?.label ?? key;
+/**
+ * Settings the screen no longer shows, and why.
+ *
+ * A retired setting is not deleted. The row stays in `SystemSettings`, its copy
+ * stays commented out in `COPY`, and taking a key out of this list brings the whole
+ * thing back — nothing here is a one-way door.
+ *
+ * It has to be an explicit list because commenting out the COPY entry does not
+ * hide anything: the rows come from the API, and a key with no copy simply falls
+ * back to printing itself. That is how `directory.public_enabled` ended up on
+ * screen as a raw key beside a live Yes/No switch — the exact control the comment
+ * above it says must never be offered, since staff would read it as proof member
+ * data can be published. It reads nothing and does nothing; only the switch was
+ * real.
+ */
+const RETIRED = new Set([
+  // Retired 2026-08-31 with decision D1 — the directory is members-only, and
+  // nothing in the platform reads this key any more.
+  'directory.public_enabled',
+]);
+
+/**
+ * A key nobody has written copy for yet, as something readable.
+ *
+ * `events.guest_booking_otp` becomes "Guest booking OTP". Printing the raw key
+ * instead is what collided three labels into each other at the foot of
+ * Operations: a dotted key is one long unbreakable word, and three columns of a
+ * half-width card have nowhere to put it.
+ *
+ * A fallback, never a substitute for copy. The `?` still carries the stored
+ * developer note, and a setting worth showing an admin is worth an entry in
+ * `COPY` that says what turning it on does.
+ */
+const humanise = (key: string) => {
+  const last = key.split('.').pop() ?? key;
+  const words = last.replace(/_/g, ' ').trim();
+
+  return words
+    .replace(/^./, (first) => first.toUpperCase())
+    .replace(/\b(otp|gst|gstin|pan|sla|url|id)\b/gi, (term) => term.toUpperCase());
+};
+
+const labelOf = (key: string) => COPY[key]?.label ?? humanise(key);
 
 /** Our copy where we have it; the stored developer note only as a fallback. */
 const helpFor = (row: SystemSetting) => COPY[row.key]?.help ?? row.description ?? null;
@@ -335,6 +392,11 @@ const ROW_ORDER = [
   'notification.in_app_enabled',
   'application.max_resubmissions',
   'directory.enabled',
+  // The guest-booking pair sits with the other switches rather than beside the
+  // event window below: all four answer "is this turned on", where the windows
+  // answer "for how long".
+  'events.guest_booking_otp',
+  'events.booking_lookup_enabled',
   // The two day-to-day windows, beside the switches they run alongside and
   // ahead of the two prose blocks that close the card.
   'event.payment_hold_days',
@@ -427,7 +489,13 @@ export const SystemSettings = () => {
     setError(null);
     try {
       const res = await SettingsService.list();
-      setRows(res.data);
+      /*
+        Retired rows are dropped here rather than at render, so nothing
+        downstream can reach them: not the grid, not the `changed` tally, and not
+        the save payload. A row the admin cannot see must never be a row they can
+        accidentally save.
+      */
+      setRows(res.data.filter((row) => !RETIRED.has(row.key)));
       setDraft({});
     } catch (err) {
       setError(asError(err));
@@ -832,7 +900,7 @@ export const SystemSettings = () => {
                                       className="text-supporting font-medium text-fg"
                                     />
                                   ) : (
-                                    <span className="text-supporting font-medium text-fg">
+                                    <span className="text-supporting min-w-0 break-words font-medium text-fg">
                                       {labelOf(row.key)}
                                     </span>
                                   )}

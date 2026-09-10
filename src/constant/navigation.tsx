@@ -10,13 +10,13 @@ import {
   Inbox,
   Layers,
   LayoutDashboard,
-  LayoutTemplate,
+  // LayoutTemplate,  ← with the Templates entry below
   type LucideIcon,
   MapPin,
-  Network,
+  // Network,  ← with the Organisation entry below
   Newspaper,
   ScrollText,
-  Send,
+  // Send,  ← with the Outbox entry below
   Settings,
   ShieldCheck,
   Tags,
@@ -90,7 +90,19 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       {
         key: 'applications',
-        label: 'Applications',
+        /*
+          "Member Requests", not "Applications". The rail sits beside
+          Registrations (event sign-ups) and Change Requests (edits to a member's
+          own record), and a bare "Applications" said nothing about which of the
+          three it was. It also names what the row IS — a company asking to join,
+          waiting on a decision — where "Applications" named the paperwork.
+
+          "Membership Requests" said it better and truncated at this rail width;
+          this is the same phrase at the width Change Requests already proves
+          fits. The route, the API and the permission keep the association's own
+          word (`application.view`, `/applications`); only the label changed.
+        */
+        label: 'Member Requests',
         path: '/applications',
         icon: ClipboardList,
         anyOf: ['application.view'],
@@ -105,17 +117,16 @@ export const NAV_GROUPS: NavGroup[] = [
           association's own word (`member.view`, `/members`); only the label the
           reader sees is more specific.
 
-          `hidden`: the list itself now lives on the Applications page's
-          Member Company tab (`/applications?scope=member-company`) — `/members`
-          redirects there. This entry stays, hidden from the sidebar, purely so
-          `/members/:id` still resolves "Member Companies" as its header title.
+          Visible again, and directly under Member Requests: that is the
+          lifecycle order — a company asks to join, then it is on the register.
+          The two spent a release as tabs on one page, which hid the register
+          behind the queue.
         */
         label: 'Member Companies',
         path: '/members',
         icon: Users,
         anyOf: ['member.view'],
         module: 'M3',
-        hidden: true,
       },
       {
         key: 'change-requests',
@@ -125,26 +136,28 @@ export const NAV_GROUPS: NavGroup[] = [
         anyOf: ['member.approve_change'],
         module: 'M3',
       },
+      /*
+        Hidden at the client's request (2026-09-09).
+
+        No screen exists behind it — `AppRoutes` derives a `Placeholder` route
+        from every nav entry it does not explicitly define, so commenting this
+        out retires the rail item and that placeholder together, and
+        `/masters/committees` now falls through to NotFound.
+
+        Filed under Work, not Configure. Office bearers, committees and chapter
+        heads are a record of who currently holds what — read and updated as the
+        association's terms turn over, like the member and application records
+        above it. Configure is for the rules a screen runs by.
+
       {
         key: 'org',
-        /*
-          Filed under Work, not Configure. Office bearers, committees and chapter
-          heads are a record of who currently holds what — read and updated as
-          the association's terms turn over, like the member and application
-          records above it. Configure is for the rules a screen runs by:
-          categories, fees, document types.
-
-          "Organisation", not "Designations & Committees" — which truncated in
-          the rail at any width worth having. The screen covers all three of
-          those things (requirements.md); the old label named two and still did
-          not fit.
-        */
         label: 'Organisation',
         path: '/masters/committees',
         icon: Network,
         anyOf: ['org.manage'],
         module: 'M10',
       },
+      */
     ],
   },
   {
@@ -219,6 +232,11 @@ export const NAV_GROUPS: NavGroup[] = [
         anyOf: ['enquiry.view'],
         module: 'M8',
       },
+      /*
+        Hidden at the client's request (2026-09-09). Neither has a screen yet —
+        both were `Placeholder` routes generated from these entries, so those two
+        URLs now fall through to NotFound along with the rail items.
+
       {
         key: 'templates',
         label: 'Templates',
@@ -235,6 +253,7 @@ export const NAV_GROUPS: NavGroup[] = [
         anyOf: ['notification.view'],
         module: 'M8',
       },
+      */
     ],
   },
   {

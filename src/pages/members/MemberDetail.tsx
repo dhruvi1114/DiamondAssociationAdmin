@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { PauseCircleOutlined, PlayCircleOutlined, StopOutlined } from '@ant-design/icons';
+// `StopOutlined` belongs to the commented-out Terminate button below. Restore it
+// with that button.
+import { PauseCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { Tooltip } from 'antd';
 import { History } from 'lucide-react';
 import {
@@ -29,6 +31,36 @@ import StatusDialog, { type StatusAction } from './StatusDialog';
 /** Shown on every status control once a membership is terminated. */
 const TERMINAL_REASON =
   'This membership is terminated. Terminated is final — returning this company would mean a fresh application.';
+
+/**
+ * Which status each status may move to — the same table `changeStatus` enforces
+ * in `member.service.ts`, mirrored here so the buttons agree with the server.
+ *
+ * They did not. Every control was live on every record except a terminated one,
+ * so Reactivate sat enabled — and styled as the primary action — on a member who
+ * was already active, where pressing it returns a 409. The screen was offering
+ * an action the server had already decided it would refuse.
+ *
+ * A stale copy of a server rule is its own risk, so the shape is deliberate: an
+ * entry MISSING here disables the button rather than hiding it, and the button
+ * says why. A rule that drifts therefore costs a wrongly-greyed control with an
+ * explanation attached, never a wrongly-offered one that fails on click.
+ */
+const ALLOWED_NEXT: Record<MemberDetailRecord['status'], readonly StatusAction[]> = {
+  DRAFT: [],
+  PENDING: ['suspend'],
+  ACTIVE: ['suspend'],
+  SUSPENDED: ['reactivate'],
+  EXPIRED: ['reactivate'],
+  TERMINATED: [],
+};
+
+/** Why a status control is off, when it is not simply that the record is closed. */
+const NOT_ALLOWED_REASON: Partial<Record<StatusAction, string>> = {
+  reactivate:
+    'This membership is already active. Reactivate applies to a suspended or expired one.',
+  suspend: 'Only an active membership can be suspended.',
+};
 
 /**
  * A-08 — one member, everything about them.
@@ -143,6 +175,17 @@ export const MemberDetail = () => {
   /** TERMINATED has no outgoing transition — see the comment on the action row. */
   const isTerminated = member.status === 'TERMINATED';
 
+  /** Whether this record's status permits the move, per `ALLOWED_NEXT`. */
+  const allows = (action: StatusAction) => ALLOWED_NEXT[member.status].includes(action);
+
+  /*
+    Terminated wins the explanation wherever it applies: "terminated is final"
+    tells the reader something about the record, where "only an active membership
+    can be suspended" only tells them about the button.
+  */
+  const reasonFor = (action: StatusAction) =>
+    isTerminated ? TERMINAL_REASON : (NOT_ALLOWED_REASON[action] ?? TERMINAL_REASON);
+
   const banner = BANNER[member.status];
 
   // The code/status/class/registered line the top meta row used to carry —
@@ -211,10 +254,16 @@ export const MemberDetail = () => {
               <div className="flex flex-col gap-2">
                 <Button
                   block
-                  variant="success"
+                  /*
+                    Primary only when it is the move this record can actually
+                    make. On an active member Reactivate is refused by the
+                    server, and the green fill was pointing at it as the thing to
+                    do next.
+                  */
+                  variant={allows('reactivate') ? 'success' : 'secondary'}
                   icon={<PlayCircleOutlined />}
-                  disabled={isTerminated}
-                  {...(isTerminated ? { disabledReason: TERMINAL_REASON } : {})}
+                  disabled={!allows('reactivate')}
+                  {...(allows('reactivate') ? {} : { disabledReason: reasonFor('reactivate') })}
                   onClick={() => setStatusAction('reactivate')}
                 >
                   Reactivate
@@ -222,12 +271,30 @@ export const MemberDetail = () => {
                 <Button
                   block
                   icon={<PauseCircleOutlined />}
-                  disabled={isTerminated}
-                  {...(isTerminated ? { disabledReason: TERMINAL_REASON } : {})}
+                  disabled={!allows('suspend')}
+                  {...(allows('suspend') ? {} : { disabledReason: reasonFor('suspend') })}
                   onClick={() => setStatusAction('suspend')}
                 >
                   Suspend
                 </Button>
+                {/*
+                  Hidden on request (2026-09-09), not removed.
+
+                  Terminate is the one status with no way out — `STATUS_TRANSITIONS`
+                  in `member.service.ts` gives TERMINATED an empty list — and the
+                  way back this screen offers instead does not work. The dialog
+                  says "returning this company would mean a fresh application",
+                  but `Members_gst_number_live_key` is scoped to `deletedAt IS
+                  NULL`, and terminating sets `status` without ever soft-deleting
+                  the row. So a terminated member keeps holding its GSTIN, and the
+                  fresh application is refused as a duplicate. Both doors are shut.
+
+                  Until that is settled — either terminate frees the GSTIN, or the
+                  dialog stops promising a route that does not exist — the button
+                  is off the screen. The action itself still exists on the API and
+                  in `StatusDialog`, so this is a guard rail, not a removal:
+                  uncomment to bring it back.
+
                 <Button
                   block
                   variant="danger"
@@ -238,6 +305,7 @@ export const MemberDetail = () => {
                 >
                   Terminate
                 </Button>
+                */}
               </div>
             ) : (
               <p className="m-0 text-supporting text-fg-subtle">

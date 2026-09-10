@@ -86,7 +86,9 @@ export const SnapshotPanel = ({ application }: SnapshotPanelProps) => {
           <Group
             icon={<Tags size={16} strokeWidth={1.5} />}
             title="Membership Plan"
-            description="What this applicant chose on the website, and what approving them will bill."
+            /* Subtitle hidden at the client's request (2026-09-09) — the card's
+               own title and its three labelled figures already say it.
+               description="What this applicant chose on the website, and what approving them will bill." */
           >
             <Field
               label="Plan"

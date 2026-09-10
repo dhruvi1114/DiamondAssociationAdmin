@@ -1,7 +1,8 @@
-import { Ban, CheckCircle2 } from 'lucide-react';
+import { Ban, CheckCircle2, Eye, Paperclip } from 'lucide-react';
 import { Form, Input } from 'antd';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
+  Button,
   Card,
   ConfirmDialog,
   DataTable,
@@ -20,6 +21,7 @@ import {
   TextCell,
   toast,
 } from '@/components/ui';
+import DocumentPreviewDialog from '@/components/DocumentPreviewDialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { usePermissions } from '@/hooks/usePermissions';
 import EventService, {
@@ -95,6 +97,26 @@ const ClaimsTable = ({
 
   const verify = useConfirm<PaymentSubmissionRow>();
   const [rejecting, setRejecting] = useState<PaymentSubmissionRow | null>(null);
+  /** Which receipt is being fetched, so only that row's button spins. */
+  const [downloading, setDownloading] = useState<string | null>(null);
+  /**
+   * The claim whose receipt the eye opened. Reading it does not decide
+   * anything — Approve/Reject inside the preview still go through the same
+   * `verify`/`rejecting` flow the row actions use, so a decision made from in
+   * here is indistinguishable from one made from the row.
+   */
+  const [preview, setPreview] = useState<PaymentSubmissionRow | null>(null);
+
+  const openProof = useCallback(async (row: PaymentSubmissionRow) => {
+    setDownloading(row.id);
+    try {
+      await EventService.downloadPaymentProof(row.id, row.reference_no);
+    } catch {
+      toast.error('Could not open that receipt');
+    } finally {
+      setDownloading(null);
+    }
+  }, []);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
 
@@ -232,6 +254,9 @@ const ClaimsTable = ({
     try {
       await EventService.rejectPayment(rejecting.id, values.reason);
       toast.success('Marked as not traced. The payer has been told, and their seats stay held.');
+      // Opened from the preview: the decision is made, so the preview closes
+      // with it rather than sitting open on a claim that no longer needs one.
+      if (preview && preview.id === rejecting.id) setPreview(null);
       setRejecting(null);
       form.resetFields();
       await load();
@@ -240,7 +265,7 @@ const ClaimsTable = ({
     } finally {
       setSaving(false);
     }
-  }, [form, load, rejecting]);
+  }, [form, load, preview, rejecting]);
 
   /*
     A decision column is only worth its width once something on the page has been
@@ -319,6 +344,43 @@ const ClaimsTable = ({
               dataIndex: 'reference_no',
               width: 180,
               render: (value: string) => <TextCell value={value} width={156} query={search} />,
+            },
+            {
+              /*
+                The evidence itself, next to the number it backs.
+
+                A claim is an assertion until somebody checks it, and the whole
+                point of this queue is deciding that. Opening the receipt here
+                answers most claims without leaving the screen; the bank portal
+                is for the ones that look wrong.
+              */
+              title: 'Receipt',
+              dataIndex: 'proof_path',
+              width: 110,
+              /*
+                Download only. Looking at the receipt is an ACTION and lives in
+                the Actions column with the two decisions it informs — this
+                column answers "is there a file, and can I keep a copy".
+              */
+              render: (value: string | null, row: PaymentSubmissionRow) =>
+                value ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={<Paperclip size={15} strokeWidth={1.5} />}
+                    loading={downloading === row.id}
+                    onClick={() => void openProof(row)}
+                  >
+                    View
+                  </Button>
+                ) : (
+                  /*
+                    Claims filed before receipts were required have none, and
+                    they are exactly the ones a verifier must not mistake for
+                    "the file failed to load".
+                  */
+                  <NotAvailable />
+                ),
             },
             {
               /* How it was sent — it decides which statement you go and look in. */
@@ -427,6 +489,22 @@ const ClaimsTable = ({
                 return (
                   <RowActions
                     actions={[
+                      /*
+                        The eye leads, as it does on the document verification
+                        drawer: you look before you decide, so the action that
+                        shows you the receipt sits ahead of the two that act on
+                        it. Never disabled by `checked` — reading a claim that
+                        has already been settled is exactly how somebody checks
+                        what a colleague did.
+                      */
+                      {
+                        key: 'preview',
+                        icon: <Eye size={16} strokeWidth={1.5} />,
+                        label: 'Look at the receipt',
+                        disabled: !row.proof_path,
+                        ...(row.proof_path ? {} : { disabledReason: 'This claim has no receipt.' }),
+                        onClick: () => setPreview(row),
+                      },
                       {
                         key: 'verify',
                         icon: <CheckCircle2 size={16} strokeWidth={1.5} />,
@@ -472,6 +550,9 @@ const ClaimsTable = ({
             toast.success(
               'Payment confirmed. The booking is confirmed and everyone has been told.',
             );
+            // Opened from the preview: close it along with the confirm dialog
+            // rather than leaving it open on a claim that is now decided.
+            if (preview && preview.id === row.id) setPreview(null);
             await load();
           })
         }
@@ -506,6 +587,66 @@ const ClaimsTable = ({
           </Form.Item>
         </Form>
       </FormDrawer>
+
+      {/*
+        Reused, not rebuilt: the same dialog `DocumentVerificationDrawer` opens
+        for an application document. A payment claim's receipt is a different
+        file behind a different endpoint, but the shape — fetch a blob, show
+        it, offer a download — is identical, which is exactly what `load` and
+        `download` being passed in rather than baked in is for.
+      */}
+      <DocumentPreviewDialog
+        documentId={preview?.id ?? null}
+        label={preview ? `Payment proof — ${preview.reference_no}` : ''}
+        {...(preview
+          ? {
+              description: `${preview.paid_by ?? 'Unknown payer'} · ${SUBMISSION_METHOD[preview.method]}`,
+            }
+          : {})}
+        load={EventService.previewPaymentProof}
+        revoke={EventService.revokePaymentProofPreview}
+        download={() =>
+          preview
+            ? EventService.downloadPaymentProof(preview.id, preview.reference_no)
+            : Promise.resolve()
+        }
+        onClose={() => setPreview(null)}
+        /*
+          Approve and Reject call the exact same functions the row's own icons
+          do — `verify.ask` opens the same confirm dialog, `setRejecting` opens
+          the same reason drawer — so there is one place that decides a claim,
+          not two. Both close automatically once that decision succeeds (see
+          `verify.confirm` and `submitRejection` above).
+        */
+        {...(preview && canDecide
+          ? {
+              actions: (
+                <>
+                  <Button
+                    variant="success"
+                    disabled={preview.status !== SUBMISSION_STATUS.PENDING}
+                    {...(preview.status !== SUBMISSION_STATUS.PENDING
+                      ? { disabledReason: 'This claim has already been checked.' }
+                      : {})}
+                    onClick={() => verify.ask(preview)}
+                  >
+                    Approve
+                  </Button>
+                  <Button
+                    variant="danger"
+                    disabled={preview.status !== SUBMISSION_STATUS.PENDING}
+                    {...(preview.status !== SUBMISSION_STATUS.PENDING
+                      ? { disabledReason: 'This claim has already been checked.' }
+                      : {})}
+                    onClick={() => setRejecting(preview)}
+                  >
+                    Reject
+                  </Button>
+                </>
+              ),
+            }
+          : {})}
+      />
     </>
   );
 };

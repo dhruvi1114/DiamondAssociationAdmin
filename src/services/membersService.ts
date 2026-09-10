@@ -294,19 +294,46 @@ export const MembersService = {
    * Pull a KYC file through the authorised endpoint and hand it to the browser.
    *
    * There is no static URL for these files by design (file-storage.md §3), so an
-   * `<a href>` cannot work: the request has to carry the admin's bearer token and
-   * the `x-audience: admin` header that tells the shared route which middleware
-   * to run. That means fetching the bytes and driving the save from an object
-   * URL rather than letting the browser navigate.
+   * `<a href>` cannot work: the request has to carry the admin's bearer token,
+   * which the browser cannot attach to a navigation. That means fetching the
+   * bytes and driving the save from an object URL.
+   *
+   * **No `x-audience` header**, and sending one broke every member download.
+   * `authenticateEitherAudience` (`member.routes.ts`) reads the audience from the
+   * JWT's own `aud` claim; the header was its first design and was abandoned
+   * precisely because CORS `allowedHeaders` (`security.ts`) does not list it, so
+   * the browser blocks the request at the preflight and axios reports it as
+   * "could not reach the server". `invoicesService` carries the same note.
    *
    * The filename comes from the row we already hold rather than from
    * `Content-Disposition` — that header is not in the API's
    * `Access-Control-Expose-Headers`, so a cross-origin reader cannot see it.
    */
+  /**
+   * The same file as `downloadDocument`, handed back for the screen to SHOW.
+   *
+   * Ownership of the object URL passes to the caller — a preview has to keep it
+   * alive while the image is on screen, where a download can revoke a second
+   * later. `revokeDocumentPreview` on this service is how it gives it back.
+   *
+   * `type` comes from the blob rather than the filename: a "licence.pdf" that is
+   * really a JPEG should still render, and an extension is a claim while the
+   * blob's own type is what the browser will honour.
+   */
+  previewDocument: async (documentId: string): Promise<{ url: string; type: string }> => {
+    const response = await http.get<Blob>(ENDPOINTS.DOCUMENTS.download(documentId), {
+      responseType: 'blob',
+    });
+
+    return { url: URL.createObjectURL(response.data), type: response.data.type };
+  },
+
+  /** Hands back what `previewDocument` allocated. Call it when the preview closes. */
+  revokeDocumentPreview: (url: string): void => URL.revokeObjectURL(url),
+
   downloadDocument: async (documentId: string, filename: string): Promise<void> => {
     const response = await http.get<Blob>(ENDPOINTS.DOCUMENTS.download(documentId), {
       responseType: 'blob',
-      headers: { 'x-audience': 'admin' },
     });
 
     const url = URL.createObjectURL(response.data);

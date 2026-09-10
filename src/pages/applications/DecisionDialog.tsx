@@ -118,10 +118,38 @@ export const DecisionDialog = ({
   const capped = maxResubmissions > 0;
   const rejectCloses = capped && application.resubmission_count >= maxResubmissions;
 
-  /** The stage an approval moves this to, when it is not the last one. */
+  /*
+   * Where an approval sends this: the next ACTIVE stage after the current one,
+   * which is what `resolveApproval` does on the server (stage-toggle D-8).
+   *
+   * It used to be `sequence + 1`. Sequences are not renumbered when a stage is
+   * switched off (stage-toggle D-3), so that arithmetic named a stage the flow
+   * skips — and it would have promised this dialog's reader a step that never
+   * happens. `stages` arrives ordered by sequence, so the first active stage
+   * past the current position is the answer.
+   */
   const nextStage = stage
-    ? stages.find((candidate) => candidate.sequence === stage.sequence + 1)
+    ? stages.find((candidate) => candidate.is_active && candidate.sequence > stage.sequence)
     : undefined;
+
+  /*
+   * Whether pressing Approve ENDS the application rather than clearing a step of
+   * it — the question all of the approve copy below turns on.
+   *
+   * `is_final` is no longer the whole answer. With the stages after it switched
+   * off, an ordinary stage is the last one an application will ever see, and the
+   * server approves outright there (stage-toggle D-4) — creating the member, the
+   * term and the invoice. A dialog that said "Approve this stage" over that
+   * would be asking for consent to something other than what happens.
+   */
+  const finishesApplication = isFinalStage || !nextStage;
+
+  /**
+   * The stages a reassign may target: active ones only (stage-toggle D-9), and
+   * the server refuses an inactive target anyway. Moving an application to a
+   * switched-off stage would park it in a queue nobody is looking at.
+   */
+  const selectableStages = stages.filter((candidate) => candidate.is_active);
 
   const remarksRequired = kind !== 'approve';
 
@@ -171,7 +199,9 @@ export const DecisionDialog = ({
     }
   > = {
     approve: {
-      title: isFinalStage ? `Approve and activate ${company}?` : `Clear this stage for ${company}?`,
+      title: finishesApplication
+        ? `Approve and activate ${company}?`
+        : `Clear this stage for ${company}?`,
       /*
         The final-stage line is hidden at the client's request; what it said —
         that this is one all-or-nothing transaction — now sits in the mark beside
@@ -179,10 +209,10 @@ export const DecisionDialog = ({
 
         description: 'This is the final stage. Approving does everything below in one transaction — all of it, or none of it.',
       */
-      description: isFinalStage
+      description: finishesApplication
         ? ''
         : `Approving records that ${stage?.name ?? 'this stage'} is satisfied and moves the application on. It does not create a member yet.`,
-      confirmLabel: isFinalStage ? 'Approve and activate' : 'Approve this stage',
+      confirmLabel: finishesApplication ? 'Approve and activate' : 'Approve this stage',
       danger: false,
     },
     reject: {
@@ -247,7 +277,7 @@ export const DecisionDialog = ({
           (ux-principles.md §4). Reject earns no phrase either — its mandatory
           reason is already a paragraph of deliberate thought.
         */}
-        {kind === 'approve' && isFinalStage ? (
+        {kind === 'approve' && finishesApplication ? (
           <div className="rounded-md border border-border bg-raised px-3 py-2">
             <FieldLabel
               label="Creates the member, term and invoice — all of it, or none of it"
@@ -258,7 +288,7 @@ export const DecisionDialog = ({
           </div>
         ) : null}
 
-        {kind === 'approve' && !isFinalStage && nextStage ? (
+        {kind === 'approve' && !finishesApplication && nextStage ? (
           <div className="rounded-md border border-border bg-raised px-3 py-2 text-12 text-fg-muted">
             Next: <span className="font-medium text-fg">{nextStage.name}</span>, decided by{' '}
             {nextStage.approver_role.name}. The applicant is told it advanced.
@@ -345,9 +375,15 @@ export const DecisionDialog = ({
               setStageId(value);
               setStageError(undefined);
             }}
-            options={stages.map((candidate) => ({
+            /*
+              Numbered by position in the list, not by `candidate.sequence`
+              (stage-toggle D-7). With the first two stages switched off the raw
+              sequence would offer a lone "3." with no 1 or 2 above it, which
+              reads as a list that failed to load rather than as the whole of it.
+            */
+            options={selectableStages.map((candidate, index) => ({
               value: candidate.id,
-              label: `${candidate.sequence}. ${candidate.name} — ${candidate.approver_role.name}`,
+              label: `${index + 1}. ${candidate.name} — ${candidate.approver_role.name}`,
               disabled: candidate.id === stage?.id,
             }))}
           />

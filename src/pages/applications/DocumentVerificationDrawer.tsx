@@ -1,14 +1,18 @@
-import { useState } from 'react';
-import { Tooltip } from 'antd';
-import { Check, ChevronDown, Download, FileText, X } from 'lucide-react';
+import { useState, type Key } from 'react';
+import { Check, Download, Eye, X } from 'lucide-react';
 import {
   Alert,
   Badge,
   Button,
+  Card,
+  DataTable,
+  DateCell,
+  Dialog,
   Drawer,
-  EmptyState,
+  RowActions,
   StatusChip,
   Textarea,
+  TextCell,
   toast,
 } from '@/components/ui';
 import { DRAWER_BODY_STYLE } from '@/components/ui/drawerChrome';
@@ -20,7 +24,8 @@ import ApplicationsService, {
   type ApplicationDocument,
 } from '@/services/applicationsService';
 import { asDisplayError, type DisplayError } from '@/utils/apiError';
-import { formatBytes, formatDate, formatDateTime } from '@/utils/format';
+import { formatBytes, formatDateTime } from '@/utils/format';
+import DocumentPreviewDialog from '@/components/DocumentPreviewDialog';
 
 /**
  * A-04 — the whole document review, in one drawer.
@@ -43,16 +48,61 @@ import { formatBytes, formatDate, formatDateTime } from '@/utils/format';
  * - A rejection reason is **mandatory**, and reaches the applicant verbatim,
  *   because it is what the reject email itemises.
  * - A decided application is history. Its files keep their marks — that is the
- *   record of what the committee actually saw — but nothing can be re-marked.
+ *   record of what the committee saw — but nothing can be re-marked. Opening a
+ *   file is not marking it, so that survives the decision.
  *
- * Wider than the 560px drawer default. A document row carries a name, a
- * required/optional qualifier, an upload date and a status on one line; at 560
- * the status wrapped under the name and the row stopped reading as one fact.
+ * ## Why a table and not a stack of cards
+ *
+ * The list was a hand-built `<ol>` of expandable cards, each one laying its own
+ * name, badges, date and status out with flexbox. Four columns of the same four
+ * facts, aligned by nothing but the fact that every card used the same markup —
+ * so a long file name pushed that row's date somewhere the row above did not
+ * have it, and the reviewer's eye had to re-find every field on every row. A
+ * table is what the data always was: same fields, one per column, scanned down
+ * rather than read across. `DataTable` also brings the app's own borders, zebra
+ * banding and empty state, none of which the cards had.
+ *
+ * **Every fact is a column; nothing hides.** There was briefly an expand row
+ * carrying the per-file detail, dropped at the client's request (2026-09-09).
+ * What it held is now placed where it can be read without a click: the remarks
+ * are their own column — a rejection reason nobody can see until they expand
+ * something is a reason nobody checks before the email goes out — required is
+ * its own column, the attribution rides the status chip's tooltip, and the note
+ * is written in a dialog. The storage filename, size and type live in the
+ * preview the eye opens, beside the file they describe.
+ *
+ * Wider than the 560px drawer default, and wider than the 640 the cards needed:
+ * six columns, the actions that used to sit inside a card now holding a
+ * permanent column of their own, and Notes given room to show a reason rather
+ * than an ellipsis.
  */
 
-const DRAWER_WIDTH = 640;
+const DRAWER_WIDTH = 880;
 
 type Decision = 'VERIFIED' | 'REJECTED';
+
+/**
+ * Why a decided or already-marked file cannot be marked again.
+ *
+ * One function so the ✓ and the ✗ can never explain the same block differently,
+ * and `undefined` when the control is live — `RowActions` shows the label as the
+ * tooltip then, so the two never both fire.
+ */
+const blockedReason = (
+  document: ApplicationDocument,
+  decision: Decision,
+  closed: boolean,
+): string | undefined => {
+  if (closed) {
+    return 'This application has been decided. Its marks are the record of what the committee saw.';
+  }
+
+  if (document.verification_status === decision) {
+    return decision === 'VERIFIED' ? 'Already marked verified.' : 'Already marked rejected.';
+  }
+
+  return undefined;
+};
 
 /**
  * "Aadhaar Card — Back", or just "PAN Document" when the type is one file.
@@ -82,19 +132,6 @@ const documentLabel = (document: ApplicationDocument) =>
 const isRequired = (document: ApplicationDocument): boolean =>
   document.document_type.is_required !== false;
 
-/*
-  One of the four tiles across the top — hidden with them, kept with them.
-
-  interface Tile {
-    key: string;
-    label: string;
-    value: number;
-    icon: typeof FileText;
-    // Status token class for the mark. Chrome stays greyscale; meaning gets hue.
-    tone: string;
-  }
-*/
-
 export interface DocumentVerificationDrawerProps {
   open: boolean;
   onClose: () => void;
@@ -115,19 +152,27 @@ export const DocumentVerificationDrawer = ({
 }: DocumentVerificationDrawerProps) => {
   const { can } = usePermissions();
   const canVerify = can('document.verify');
+  const closed = isTerminal(status);
 
   /**
-   * Rows open independently rather than one-at-a-time. Comparing a rejection
-   * reason against the reason written on a neighbouring file is a real move, and
-   * an accordion that closes the first row to open the second makes it
-   * impossible.
+   * The document the eye opened. The one control on the row a decided
+   * application does not disable — the record of what the committee saw outlives
+   * the decision, and reading it back is how an appeal or an audit is answered.
    */
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [preview, setPreview] = useState<ApplicationDocument | null>(null);
 
-  const [target, setTarget] = useState<{
-    document: ApplicationDocument;
-    decision: Decision;
-  } | null>(null);
+  /**
+   * The note dialog's target — one document (the row's own ✓/✗) or several (the
+   * selection bar's Approve/Reject selected). Same dialog either way: a
+   * rejection reason is asked for the same way regardless of how many documents
+   * it applies to, so there is exactly one reason-collection pattern in this
+   * file rather than a second one for the bulk case.
+   */
+  type NoteTarget =
+    | { scope: 'single'; document: ApplicationDocument; decision: Decision }
+    | { scope: 'bulk'; documents: ApplicationDocument[]; decision: Decision };
+
+  const [target, setTarget] = useState<NoteTarget | null>(null);
   const [remarks, setRemarks] = useState('');
   const [remarksError, setRemarksError] = useState<string | undefined>();
   const [error, setError] = useState<DisplayError | null>(null);
@@ -135,79 +180,11 @@ export const DocumentVerificationDrawer = ({
   const [downloading, setDownloading] = useState(false);
 
   /**
-   * The running score, over the latest version of each required type — the same
-   * arithmetic the decision bar reads and the same the server enforces. Counting
-   * every row instead would let a superseded v1 rejection keep Approve disabled
-   * after its replacement had been verified.
+   * Documents the reviewer has ticked for a bulk decision. Only ever holds
+   * undecided documents — the checkbox is disabled on anything else — so a
+   * bulk action can never reach a document someone already ruled on.
    */
-  // const score = scoreDocuments(documents);  ← restored with the tiles above.
-
-  /**
-   * A decided application is history: its marks are the record of what the
-   * committee saw, and re-marking them afterwards would rewrite the basis of a
-   * decision already taken.
-   */
-  const closed = isTerminal(status);
-
-  /*
-    Hidden with the KPI tiles and the Required / Optional tabs below. Kept as
-    commented source rather than deleted, because restoring either piece of UI
-    means restoring exactly this — and re-deriving it from memory is how the two
-    would come back subtly different. Restoring also needs the `Tile` interface,
-    the `Tabs`, `Info` and `Lock` imports and the `CircleCheck` / `CircleX` /
-    `Clock3` icons.
-
-  // const required = documents.filter((document) => isRequired(document));
-  // const optional = documents.filter((document) => !isRequired(document));
-  //
-  // const tiles: Tile[] = [
-  //   {
-  //     key: 'total',
-  //     label: 'Total Documents',
-  //     value: score.total,
-  //     icon: FileText,
-  //     tone: 'text-fg-muted',
-  //   },
-  //   {
-  //     key: 'verified',
-  //     label: 'Verified',
-  //     value: score.verified,
-  //     icon: CircleCheck,
-  //     tone: 'text-status-success-fg',
-  //   },
-  //   {
-  //     key: 'pending',
-  //     label: 'Awaiting review',
-  //     value: score.pending,
-  //     icon: Clock3,
-  //     tone: 'text-status-warning-fg',
-  //   },
-  //   {
-  //     key: 'rejected',
-  //     label: 'Rejected',
-  //     value: score.rejected,
-  //     icon: CircleX,
-  //     tone: 'text-status-danger-fg',
-  //   },
-  // ];
-  */
-
-  /**
-   * Verifying a document you cannot read is a rubber stamp, so opening it is
-   * available on a decided application too — the record of what the committee
-   * saw outlives the decision.
-   */
-  const openFile = async (document: ApplicationDocument) => {
-    try {
-      await ApplicationsService.downloadDocument(
-        applicationId,
-        document.id,
-        document.original_name,
-      );
-    } catch (caught) {
-      toast.error(asDisplayError(caught).message);
-    }
-  };
+  const [selectedIds, setSelectedIds] = useState<Key[]>([]);
 
   /**
    * Sequential, not `Promise.all`. Each download hands the browser a file, and
@@ -232,8 +209,31 @@ export const DocumentVerificationDrawer = ({
     }
   };
 
+  /** Arms the note dialog for one document. Nothing is written until it confirms. */
   const ask = (document: ApplicationDocument, decision: Decision) => {
-    setTarget({ document, decision });
+    setTarget({ scope: 'single', document, decision });
+    setRemarks('');
+    setRemarksError(undefined);
+    setError(null);
+  };
+
+  /**
+   * Arms the note dialog for the current selection.
+   *
+   * Reads `documents` — the live prop, not anything cached off the checkboxes —
+   * and drops anything no longer undecided, the same guard `submit` repeats
+   * immediately before it fires. Two checks rather than one because a refetch
+   * can land in the gap between ticking rows and pressing this button, and
+   * again in the gap between this and confirming the dialog.
+   */
+  const askBulk = (decision: Decision) => {
+    const chosen = documents.filter(
+      (document) => selectedIds.includes(document.id) && document.verification_status === 'PENDING',
+    );
+
+    if (chosen.length === 0) return;
+
+    setTarget({ scope: 'bulk', documents: chosen, decision });
     setRemarks('');
     setRemarksError(undefined);
     setError(null);
@@ -253,25 +253,94 @@ export const DocumentVerificationDrawer = ({
     setSaving(true);
     setError(null);
 
-    try {
-      await ApplicationsService.verifyDocument(applicationId, target.document.id, {
-        status: target.decision,
-        ...(trimmed ? { remarks: trimmed } : {}),
-      });
+    if (target.scope === 'single') {
+      try {
+        await ApplicationsService.verifyDocument(applicationId, target.document.id, {
+          status: target.decision,
+          ...(trimmed ? { remarks: trimmed } : {}),
+        });
 
-      toast.success(
-        target.decision === 'VERIFIED'
-          ? `${documentLabel(target.document)} marked verified.`
-          : `${documentLabel(target.document)} marked rejected. It goes to the applicant when you press Reject.`,
-      );
+        toast.success(
+          target.decision === 'VERIFIED'
+            ? `${documentLabel(target.document)} marked verified.`
+            : `${documentLabel(target.document)} marked rejected. It goes to the applicant when you press Reject.`,
+        );
 
-      setTarget(null);
-      await onChanged();
-    } catch (caught) {
-      setError(asDisplayError(caught));
-    } finally {
-      setSaving(false);
+        setTarget(null);
+        await onChanged();
+      } catch (caught) {
+        setError(asDisplayError(caught));
+      } finally {
+        setSaving(false);
+      }
+
+      return;
     }
+
+    /*
+      Bulk. There is no bulk endpoint — each document is its own PATCH, fired
+      independently, so each keeps its own audit row. `verifyDocument` is
+      called once per document rather than once for the batch: a single audit
+      entry covering five documents would make "who verified this certificate?"
+      unanswerable later.
+
+      Re-validated here, immediately before firing, against `documents` — the
+      live prop — rather than the list captured when the dialog opened. The
+      drawer can refetch while this dialog sits open, and a row no longer
+      undecided must be dropped rather than sent blind.
+    */
+    const currentById = new Map(documents.map((document) => [document.id, document]));
+    const eligible = target.documents.filter(
+      (document) => currentById.get(document.id)?.verification_status === 'PENDING',
+    );
+
+    if (eligible.length === 0) {
+      toast.error('Nothing left to decide — those documents have already been marked.');
+      setSelectedIds([]);
+      setTarget(null);
+      setSaving(false);
+      await onChanged();
+
+      return;
+    }
+
+    const results = await Promise.allSettled(
+      eligible.map((document) =>
+        ApplicationsService.verifyDocument(applicationId, document.id, {
+          status: target.decision,
+          ...(trimmed ? { remarks: trimmed } : {}),
+        }).then(() => document.id),
+      ),
+    );
+
+    const failed: ApplicationDocument[] = [];
+
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') failed.push(eligible[index]);
+    });
+
+    const succeededCount = eligible.length - failed.length;
+    const verb = target.decision === 'VERIFIED' ? 'verified' : 'rejected';
+
+    if (failed.length === 0) {
+      toast.success(`${succeededCount} document${succeededCount === 1 ? '' : 's'} marked ${verb}.`);
+      setSelectedIds([]);
+      setTarget(null);
+    } else {
+      // Per document, not a generic failure — the reviewer needs to know
+      // exactly which ones did not go through, and they stay selected so a
+      // retry does not have to start the selection over.
+      toast.error(
+        succeededCount > 0
+          ? `${succeededCount} of ${eligible.length} marked ${verb}. Still failing: ${failed.map(documentLabel).join(', ')}.`
+          : `Could not mark any of the selected documents ${verb}: ${failed.map(documentLabel).join(', ')}.`,
+      );
+      setSelectedIds(failed.map((document) => document.id));
+      setTarget(null);
+    }
+
+    setSaving(false);
+    await onChanged();
   };
 
   /**
@@ -288,262 +357,72 @@ export const DocumentVerificationDrawer = ({
     onClose();
   };
 
-  const documentList = (rows: ApplicationDocument[], emptyTitle: string, emptyWhy: string) => {
-    if (rows.length === 0) {
-      return (
-        <EmptyState
-          title={emptyTitle}
-          description={emptyWhy}
-          icon={<FileText size={20} strokeWidth={1.5} />}
+  /**
+   * The note, asked for in a dialog.
+   *
+   * It used to be written under the row, in an expanded panel, so the file and
+   * the note about it were on screen together. The expander is gone at the
+   * client's request (2026-09-09) and a mandatory field with validation needs a
+   * surface; a dialog is the one left. What the old arrangement was protecting —
+   * knowing which of four files you are writing about — is preserved by naming
+   * the document in the title.
+   *
+   * Mandatory on a rejection, optional on a verification. That asymmetry is the
+   * rule rather than the layout: a rejection reason is itemised into the
+   * applicant's email verbatim, and a verification has nothing to explain.
+   *
+   * Bulk shares this same dialog rather than growing one of its own — the
+   * title and description are the only things that read differently for a
+   * batch, and one reason still applies to the whole selection.
+   */
+  const noteDialog = target ? (
+    <Dialog
+      open
+      title={
+        target.scope === 'single'
+          ? `${target.decision === 'REJECTED' ? 'Reject' : 'Verify'} ${documentLabel(target.document)}`
+          : `${target.decision === 'REJECTED' ? 'Reject' : 'Verify'} ${target.documents.length} documents`
+      }
+      description={
+        target.decision === 'REJECTED'
+          ? 'Nothing is sent now — this is a mark. The reason is carried into the Reject email word for word when the decision bar sends them together.'
+          : 'Nothing is sent now. This is a mark; the decision bar sends the judgement.'
+      }
+      confirmLabel={target.decision === 'REJECTED' ? 'Mark rejected' : 'Mark verified'}
+      danger={target.decision === 'REJECTED'}
+      loading={saving}
+      onConfirm={() => void submit()}
+      onCancel={() => setTarget(null)}
+    >
+      <div className="flex flex-col gap-3">
+        {error ? <Alert variant="danger" message={error.message} /> : null}
+
+        <Textarea
+          autoFocus
+          rows={4}
+          maxLength={1000}
+          value={remarks}
+          required={target.decision === 'REJECTED'}
+          label={target.decision === 'REJECTED' ? 'Reason for rejection' : 'Note (optional)'}
+          hint={
+            target.decision === 'REJECTED'
+              ? 'Say what is wrong and what to upload instead.'
+              : 'Kept on the record. The applicant sees it if you write one.'
+          }
+          placeholder={
+            target.decision === 'REJECTED'
+              ? 'The certificate is expired — please upload one valid for the current year.'
+              : undefined
+          }
+          {...(remarksError ? { error: remarksError } : {})}
+          onChange={(event) => {
+            setRemarks(event.target.value);
+            if (remarksError) setRemarksError(undefined);
+          }}
         />
-      );
-    }
-
-    return (
-      <ol className="m-0 flex list-none flex-col gap-2 p-0">
-        {rows.map((document) => {
-          const isOpen = Boolean(expanded[document.id]);
-          const label = documentLabel(document);
-
-          return (
-            <li key={document.id} className="rounded-md border border-border bg-surface">
-              {/*
-                The whole header is the toggle, not just the chevron. The chevron
-                says which way the row will move; a 16px hit area is not what a
-                reviewer aims at when the obvious target is the file name.
-              */}
-              <button
-                type="button"
-                aria-expanded={isOpen}
-                onClick={() =>
-                  setExpanded((current) => ({ ...current, [document.id]: !current[document.id] }))
-                }
-                className="flex w-full cursor-pointer items-center gap-3 border-0 bg-transparent px-3 py-3 text-left"
-              >
-                <FileText
-                  size={16}
-                  strokeWidth={1.5}
-                  className="flex-none text-fg-muted"
-                  aria-hidden
-                />
-
-                <span className="min-w-0 flex-1">
-                  <span className="flex flex-wrap items-center gap-2">
-                    <span className="truncate text-supporting font-medium text-fg">{label}</span>
-                    <Badge tone={isRequired(document) ? 'info' : 'neutral'}>
-                      {isRequired(document) ? 'Required' : 'Optional'}
-                    </Badge>
-                    {/* A re-upload. Earlier versions are kept so a past decision
-                        stays explainable by the file the reviewer actually saw. */}
-                    {document.version > 1 ? (
-                      <Badge tone="warning">{`v${document.version}`}</Badge>
-                    ) : null}
-                  </span>
-                  <span className="block text-12 text-fg-muted">
-                    Uploaded on <span className="tabular">{formatDate(document.createdAt)}</span>
-                  </span>
-                </span>
-
-                <span className="flex flex-none items-center gap-2">
-                  <StatusChip
-                    domain="document"
-                    status={document.verification_status}
-                    {...(document.verified_at
-                      ? {
-                          tooltip: `${document.verified_by?.full_name ?? 'A colleague'} · ${formatDateTime(
-                            document.verified_at,
-                          )}`,
-                        }
-                      : {})}
-                  />
-                  {/* One mark turning over, the same rotation every select arrow
-                      in the app uses — not two swapped glyphs. */}
-                  <ChevronDown
-                    size={16}
-                    strokeWidth={1.5}
-                    aria-hidden
-                    className={`text-fg-muted transition-transform ${isOpen ? 'rotate-180' : ''}`}
-                  />
-                </span>
-              </button>
-
-              {isOpen ? (
-                <div className="flex flex-col gap-3 border-t border-border px-3 py-3">
-                  {/*
-                    One line: what the file is on the left, what you can do to it
-                    on the right. The controls used to sit under the remarks,
-                    which put three buttons a paragraph away from the thing they
-                    act on — and on a row with no remarks they moved up, so their
-                    position depended on whether the reviewer had written
-                    anything. `min-w-0` on the left half is what lets a long
-                    filename truncate instead of pushing the buttons off the row.
-                  */}
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      {/* Set by a rejection that has already been sent, so this is
-                        a debt the applicant owes — not a mark waiting to be sent. */}
-                      {document.requires_reupload ? (
-                        <Badge
-                          tone="warning"
-                          tooltip="The applicant has been asked to replace this file and has not done so yet."
-                        >
-                          Awaiting re-upload
-                        </Badge>
-                      ) : null}
-                      {/* Sniffed from the bytes server-side, not taken from the
-                        upload header — so this is what the file actually is. A
-                        4 KB "GST certificate" is a screenshot of an error page. */}
-                      <span
-                        className="truncate text-12 text-fg-muted"
-                        title={document.original_name}
-                      >
-                        {document.original_name}
-                      </span>
-                      <span className="tabular text-12 text-fg-subtle">
-                        {formatBytes(document.size_bytes)} · {document.mime_type}
-                      </span>
-                    </div>
-
-                    {/*
-                    Icon-only, at the client's request, and therefore every one
-                    of them carries an `aria-label` AND a `title`: an icon with
-                    no accessible name is a button a screen reader announces as
-                    "button", and a reviewer who does not recognise the glyph has
-                    nothing to hover. `disabledReason` still supplies the tooltip
-                    wherever the control is blocked, so the two never both fire.
-                  */}
-                    <div className="flex flex-none items-center gap-2">
-                      <Tooltip title="Download">
-                        <Button
-                          size="small"
-                          variant="secondary"
-                          aria-label="Download this document"
-                          icon={<Download size={14} strokeWidth={1.5} />}
-                          onClick={() => void openFile(document)}
-                        />
-                      </Tooltip>
-
-                      {canVerify ? (
-                        <>
-                          <Button
-                            size="small"
-                            variant="success"
-                            aria-label="Mark this document verified"
-                            {...(closed || document.verification_status === 'VERIFIED'
-                              ? {}
-                              : { title: 'Mark verified' })}
-                            icon={<Check size={14} strokeWidth={1.5} />}
-                            disabled={closed || document.verification_status === 'VERIFIED'}
-                            disabledReason={
-                              closed
-                                ? 'This application has been decided. Its marks are the record of what the committee saw.'
-                                : document.verification_status === 'VERIFIED'
-                                  ? 'Already marked verified.'
-                                  : undefined
-                            }
-                            onClick={() => ask(document, 'VERIFIED')}
-                          />
-                          <Button
-                            size="small"
-                            variant="danger"
-                            aria-label="Mark this document rejected"
-                            {...(closed || document.verification_status === 'REJECTED'
-                              ? {}
-                              : { title: 'Mark rejected' })}
-                            icon={<X size={14} strokeWidth={1.5} />}
-                            disabled={closed || document.verification_status === 'REJECTED'}
-                            disabledReason={
-                              closed
-                                ? 'This application has been decided. Its marks are the record of what the committee saw.'
-                                : document.verification_status === 'REJECTED'
-                                  ? 'Already marked rejected.'
-                                  : undefined
-                            }
-                            onClick={() => ask(document, 'REJECTED')}
-                          />
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  {/* The reviewer's own words, kept where the file they are about
-                      is — this is the text the reject email itemises. */}
-                  {document.remarks ? (
-                    <p className="m-0 rounded-md bg-raised px-3 py-2 text-supporting text-fg">
-                      {document.remarks}
-                    </p>
-                  ) : null}
-
-                  {/*
-                    The note is asked for HERE, under the row, not in a modal.
-
-                    A dialog covered the list the reviewer was working through —
-                    including the file they were deciding on — so writing "the
-                    certificate is expired" meant remembering which one it was.
-                    Inline, the file, its name, its size and the note are all on
-                    screen at once, and marking six documents is six notes rather
-                    than six open-and-close cycles.
-                  */}
-                  {target && target.document.id === document.id ? (
-                    <div className="flex flex-col gap-3 rounded-md border border-border bg-surface-subtle p-3">
-                      {error ? <Alert variant="danger" message={error.message} /> : null}
-
-                      <Textarea
-                        autoFocus
-                        rows={3}
-                        maxLength={1000}
-                        value={remarks}
-                        required={target.decision === 'REJECTED'}
-                        label={
-                          target.decision === 'REJECTED'
-                            ? 'Reason for rejection'
-                            : 'Note (optional)'
-                        }
-                        hint={
-                          target.decision === 'REJECTED'
-                            ? 'Carried into the Reject email word for word. Say what is wrong and what to upload instead.'
-                            : 'Kept on the record. The applicant sees it if you write one.'
-                        }
-                        placeholder={
-                          target.decision === 'REJECTED'
-                            ? 'The certificate is expired — please upload one valid for the current year.'
-                            : undefined
-                        }
-                        {...(remarksError ? { error: remarksError } : {})}
-                        onChange={(event) => {
-                          setRemarks(event.target.value);
-                          if (remarksError) setRemarksError(undefined);
-                        }}
-                      />
-
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          size="small"
-                          variant="secondary"
-                          disabled={saving}
-                          onClick={() => setTarget(null)}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          size="small"
-                          variant={target.decision === 'REJECTED' ? 'danger' : 'success'}
-                          loading={saving}
-                          onClick={() => void submit()}
-                        >
-                          {target.decision === 'REJECTED' ? 'Mark rejected' : 'Mark verified'}
-                        </Button>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </li>
-          );
-        })}
-      </ol>
-    );
-  };
+      </div>
+    </Dialog>
+  ) : null;
 
   return (
     <>
@@ -578,21 +457,43 @@ export const DocumentVerificationDrawer = ({
           </>
         }
       >
-        <div className="flex flex-col gap-4">
-          {/*
-            The instruction that used to sit under the drawer's title. It belongs
-            here, immediately above the list it is about.
-          */}
+        {/*
+          Full height, and a column that can shrink.
+
+          `DataTable` measures its own scrolling body from the box it is given —
+          container height minus the header — so a table dropped into an
+          auto-height parent measures nothing, resolves a body of 0px and renders
+          its header over an empty void. That is not a data problem and does not
+          look like one, which is what makes it worth this comment: the rows were
+          there all along.
+
+          `h-full` because AntD's drawer body is already a definite-height flex
+          item; `min-h-0` because a flex child will not shrink below its content
+          without it, which would hand the table the full list height and put the
+          scrollbar on the drawer instead of inside the table.
+        */}
+        <div className="flex h-full min-h-0 flex-col gap-4">
           {/*
             The instruction and the bulk download share one line. `Download all`
             was in the footer, which now carries only the drawer's own two
             actions — the FormDrawer pattern — and an action on the documents
             belongs with the documents rather than beside Cancel.
           */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="m-0 text-supporting text-fg-muted">
-              Review and validate all required documents.
-            </p>
+          {/*
+            `justify-end` rather than `justify-between`, because the line that
+            used to sit opposite this button is commented out below — with one
+            child, `justify-between` would park the button on the LEFT.
+          */}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {/*
+              The instruction is hidden at the client's request (2026-09-09). The
+              drawer's title already says what this is, and the row statuses say
+              what is left to do.
+
+              <p className="m-0 text-supporting text-fg-muted">
+                Review and validate all required documents.
+              </p>
+            */}
             <Button
               size="small"
               variant="secondary"
@@ -609,49 +510,227 @@ export const DocumentVerificationDrawer = ({
           </div>
 
           {/*
-            The four KPI tiles are hidden at the client's request. Each row states
-            its own status, and a count of rows the reviewer can already see is a
-            summary of one screenful. `tiles` is still computed below — restoring
-            this only needs the markup back.
-
-            <div className="grid grid-cols-4 gap-2">
-            {tiles.map((tile) => {
-            const Icon = tile.icon;
-
-            return (
-            <div
-            key={tile.key}
-            className="flex flex-col gap-1 rounded-md border border-border bg-surface-subtle px-3 py-3"
-            >
-            <Icon size={16} strokeWidth={1.5} className={tile.tone} aria-hidden />
-            <span className="tabular text-20 font-semibold text-fg">{tile.value}</span>
-            <span className="text-12 text-fg-muted">{tile.label}</span>
-            </div>
-            );
-            })}
-            </div>
+            `autoHeight`: the card ends where the data ends. A list page wants a
+            table that fills its card, but this one is a block inside a drawer
+            that scrolls as a whole, and filling left a bordered box of empty
+            space under four rows.
           */}
+          <Card flush>
+            <DataTable<ApplicationDocument>
+              autoHeight
+              dataSource={documents}
+              emptyTitle="No documents uploaded"
+              emptyDescription="An application cannot be submitted without its required documents, so an empty list here means the requirement list is empty."
+              /*
+                Selection is opt-in on `DataTable`, and gated on `canVerify` here
+                for the same reason the row ✓/✗ are hidden without it — a
+                reviewer who cannot mark a document one at a time has no
+                business marking several.
+              */
+              {...(canVerify
+                ? {
+                    selection: {
+                      selectedRowKeys: selectedIds,
+                      onChange: (keys: Key[]) => setSelectedIds(keys),
+                      // Only undecided documents join a batch — a bulk action
+                      // must never silently overwrite a decision someone
+                      // already made with a reason attached.
+                      isSelectable: (document: ApplicationDocument) =>
+                        !closed && document.verification_status === 'PENDING',
+                      disabledReason: (document: ApplicationDocument) =>
+                        closed
+                          ? 'This application has been decided.'
+                          : document.verification_status !== 'PENDING'
+                            ? 'Already decided — a bulk action cannot overwrite it.'
+                            : undefined,
+                    },
+                    selectionBar:
+                      selectedIds.length > 0 ? (
+                        <>
+                          <span className="font-medium text-fg">
+                            {selectedIds.length} document{selectedIds.length === 1 ? '' : 's'}{' '}
+                            selected
+                          </span>
+                          <div className="ml-auto flex items-center gap-2">
+                            <Button
+                              size="small"
+                              variant="success"
+                              onClick={() => askBulk('VERIFIED')}
+                            >
+                              Approve selected
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="danger"
+                              onClick={() => askBulk('REJECTED')}
+                            >
+                              Reject selected
+                            </Button>
+                          </div>
+                        </>
+                      ) : undefined,
+                  }
+                : {})}
+              columns={[
+                {
+                  title: 'Document',
+                  key: 'document',
+                  width: 240,
+                  render: (_: unknown, document: ApplicationDocument) => (
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <TextCell value={documentLabel(document)} width={190} />
+                      {/* A re-upload. Earlier versions are kept so a past decision
+                          stays explainable by the file the reviewer actually saw. */}
+                      {document.version > 1 ? (
+                        <Badge tone="warning">{`v${document.version}`}</Badge>
+                      ) : null}
+                      {/* Set by a rejection already SENT, so it is a debt the
+                          applicant owes rather than a mark waiting to go out. */}
+                      {document.requires_reupload ? (
+                        <Badge
+                          tone="warning"
+                          tooltip="The applicant has been asked to replace this file and has not done so yet."
+                        >
+                          Awaiting re-upload
+                        </Badge>
+                      ) : null}
+                    </div>
+                  ),
+                },
+                {
+                  /*
+                    Its own column at the client's request (2026-09-09), where it
+                    used to be a badge trailing the name. Required and optional
+                    then read as a column you can scan down rather than a
+                    qualifier you have to find at the end of each name.
+                  */
+                  title: 'Required',
+                  key: 'required',
+                  width: 104,
+                  render: (_: unknown, document: ApplicationDocument) => (
+                    <Badge tone={isRequired(document) ? 'info' : 'neutral'}>
+                      {isRequired(document) ? 'Required' : 'Optional'}
+                    </Badge>
+                  ),
+                },
+                {
+                  /* 132, not 110: "09 Sept 2026" wrapped onto two lines and made
+                     every row in the table taller to fit one date. */
+                  title: 'Uploaded',
+                  key: 'uploaded',
+                  width: 132,
+                  render: (_: unknown, document: ApplicationDocument) => (
+                    <DateCell value={document.createdAt} />
+                  ),
+                },
+                {
+                  /*
+                    The reviewer's own words, promoted out of the expanded row
+                    that no longer exists. It is the text the reject email
+                    itemises, so it earns a column: a rejection whose reason is
+                    invisible until you open something is a rejection nobody can
+                    check before the email goes out.
 
-          {documents.length === 0 ? (
-            <EmptyState
-              title="No documents uploaded"
-              description="An application cannot be submitted without its required documents, so an empty list here means the requirement list is empty."
-              icon={<FileText size={20} strokeWidth={1.5} />}
+                    The slack column, and widened at the client's request
+                    (2026-09-09): the surrounding columns gave up ~60px between
+                    them and `TextCell` now truncates at 300 rather than 180, so
+                    a sentence like "the certificate is expired" is readable in
+                    the row instead of only on hover. The full text is still on
+                    hover, because a reason can be a paragraph.
+                  */
+                  title: 'Notes',
+                  key: 'remarks',
+                  render: (_: unknown, document: ApplicationDocument) => (
+                    <TextCell value={document.remarks} width={240} />
+                  ),
+                },
+                {
+                  /*
+                    A chip here, an icon in the page's summary card. The card is a
+                    sidebar column where the word cost a third of every row; this
+                    is a table with room to print it, and a status is what a
+                    reviewer scans this column for.
+
+                    The tooltip carries who marked it and when — `StatusChipProps`
+                    documents that as exactly what it is for, and with the
+                    expanded row gone this is where the attribution lives.
+                  */
+                  title: 'Status',
+                  key: 'status',
+                  width: 128,
+                  render: (_: unknown, document: ApplicationDocument) => (
+                    <StatusChip
+                      domain="document"
+                      status={document.verification_status}
+                      {...(document.verified_at
+                        ? {
+                            tooltip: `Marked by ${document.verified_by?.full_name ?? 'a colleague'} · ${formatDateTime(document.verified_at)}`,
+                          }
+                        : {})}
+                    />
+                  ),
+                },
+                {
+                  title: 'Actions',
+                  key: 'actions',
+                  width: 108,
+                  fixed: 'right' as const,
+                  /*
+                    Three visible buttons rather than a menu: the eye is the first
+                    thing done to every file and the ✓/✗ are the point of the
+                    screen, so putting any of them one click deep would add a
+                    click to every row of every review. `RowActions` is what draws
+                    them — icon-only at the client's request, and it is what
+                    supplies the `aria-label`, the tooltip and the reason a
+                    blocked control is blocked, none of which an icon has on its
+                    own.
+
+                    ✓ and ✗ are hidden rather than disabled without
+                    `document.verify`: a permission the actor does not hold is not
+                    a thing to explain on every row, and the eye keeps the cell
+                    from reading as a rendering fault. The eye is never disabled —
+                    reading a file is not marking it, so it outlives the decision.
+                  */
+                  render: (_: unknown, document: ApplicationDocument) => (
+                    <RowActions
+                      actions={[
+                        {
+                          key: 'preview',
+                          icon: <Eye size={16} strokeWidth={1.5} />,
+                          label: 'Open this document',
+                          onClick: () => setPreview(document),
+                        },
+                        {
+                          key: 'verify',
+                          icon: <Check size={16} strokeWidth={1.5} />,
+                          label: 'Mark verified',
+                          success: true,
+                          hidden: !canVerify,
+                          disabled: closed || document.verification_status === 'VERIFIED',
+                          ...(blockedReason(document, 'VERIFIED', closed)
+                            ? { disabledReason: blockedReason(document, 'VERIFIED', closed) }
+                            : {}),
+                          onClick: () => ask(document, 'VERIFIED'),
+                        },
+                        {
+                          key: 'reject',
+                          icon: <X size={16} strokeWidth={1.5} />,
+                          label: 'Mark rejected',
+                          danger: true,
+                          hidden: !canVerify,
+                          disabled: closed || document.verification_status === 'REJECTED',
+                          ...(blockedReason(document, 'REJECTED', closed)
+                            ? { disabledReason: blockedReason(document, 'REJECTED', closed) }
+                            : {}),
+                          onClick: () => ask(document, 'REJECTED'),
+                        },
+                      ]}
+                    />
+                  ),
+                },
+              ]}
             />
-          ) : (
-            /*
-              The Required / Optional tabs are hidden at the client's request:
-              with every document required on this application, two of the three
-              tabs were a filter with nothing to filter. The flat list is what
-              remains, and `required` / `optional` are still derived above if the
-              tabs come back.
-            */
-            documentList(
-              documents,
-              'No documents uploaded',
-              'Nothing has been uploaded against this application yet.',
-            )
-          )}
+          </Card>
 
           {/*
             The verification guidelines box is hidden at the client's request.
@@ -675,6 +754,37 @@ export const DocumentVerificationDrawer = ({
           */}
         </div>
       </Drawer>
+
+      {/*
+        Outside the drawer, not inside it. The dialog is centred on the viewport
+        and 900px wide — wider than the drawer it was opened from — and a modal
+        nested in a drawer's own DOM inherits that drawer's stacking context,
+        which is how a preview ends up rendered underneath the surface that
+        launched it.
+      */}
+      <DocumentPreviewDialog
+        documentId={preview?.id ?? null}
+        label={preview ? documentLabel(preview) : ''}
+        {...(preview
+          ? {
+              /* The storage filename and size, which the table no longer prints —
+                 they belong beside the file rather than in a column. */
+              description: `${preview.original_name} · ${formatBytes(preview.size_bytes)}`,
+            }
+          : {})}
+        load={(documentId) => ApplicationsService.previewDocument(applicationId, documentId)}
+        revoke={ApplicationsService.revokeDocumentPreview}
+        download={() =>
+          preview
+            ? ApplicationsService.downloadDocument(applicationId, preview.id, preview.original_name)
+            : Promise.resolve()
+        }
+        onClose={() => setPreview(null)}
+      />
+
+      {/* Same reason as the preview: a modal nested inside the drawer's DOM
+          inherits its stacking context and renders underneath it. */}
+      {noteDialog}
     </>
   );
 };

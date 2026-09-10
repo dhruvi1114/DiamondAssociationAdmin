@@ -95,10 +95,13 @@ const QUEUES: QueueDefinition[] = [
     icon: <CheckCircleOutlined />,
     anyOf: ['document.verify'],
     module: 'M3',
-    // The Verification tab on the Applications page — applications carrying
-    // at least one PENDING document. Used to point at the member list, which
-    // moved to its own tab (`member-company`) on the same page.
-    path: '/applications?scope=verification',
+    /*
+      Membership requests carrying at least one PENDING document. `?pending=true`
+      is the queue's own Documents filter — it read `?scope=verification` while
+      that page was tabbed, which matched no tab key and so quietly landed on the
+      unfiltered queue.
+    */
+    path: '/applications?pending=true',
   },
   {
     key: 'change-requests',

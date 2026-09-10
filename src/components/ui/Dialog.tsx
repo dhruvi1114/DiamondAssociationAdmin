@@ -36,6 +36,15 @@ export interface DialogProps {
   describeInTitle?: boolean;
   /** 520 is AntD's default; a dialog with one select and one note wants less. */
   width?: number;
+  /**
+   * Extra buttons in the footer, left of Cancel/Confirm. Opt-in — leave it out
+   * and the footer renders exactly as it always has, one pair right-aligned.
+   *
+   * For a dialog that lets its content be acted on without closing first (a
+   * document preview's Approve/Reject, say) rather than only confirmed or
+   * cancelled as a whole.
+   */
+  actions?: ReactNode;
 }
 
 export const Dialog = ({
@@ -52,6 +61,7 @@ export const Dialog = ({
   confirmationPhrase,
   describeInTitle = false,
   width = 460,
+  actions,
 }: DialogProps) => {
   const [typed, setTyped] = useState('');
   const confirmBlocked = Boolean(confirmationPhrase) && typed !== confirmationPhrase;
@@ -127,21 +137,24 @@ export const Dialog = ({
       destroyOnHidden
       maskClosable={!loading}
       footer={
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={close} disabled={loading}>
-            {cancelLabel}
-          </Button>
-          <Button
-            variant={danger ? 'danger' : 'primary'}
-            loading={loading}
-            disabled={confirmBlocked}
-            disabledReason={
-              confirmBlocked ? `Type "${confirmationPhrase}" to enable this action.` : undefined
-            }
-            onClick={() => void onConfirm()}
-          >
-            {confirmLabel}
-          </Button>
+        <div className={`flex items-center gap-2 ${actions ? 'justify-between' : 'justify-end'}`}>
+          {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={close} disabled={loading}>
+              {cancelLabel}
+            </Button>
+            <Button
+              variant={danger ? 'danger' : 'primary'}
+              loading={loading}
+              disabled={confirmBlocked}
+              disabledReason={
+                confirmBlocked ? `Type "${confirmationPhrase}" to enable this action.` : undefined
+              }
+              onClick={() => void onConfirm()}
+            >
+              {confirmLabel}
+            </Button>
+          </div>
         </div>
       }
     >

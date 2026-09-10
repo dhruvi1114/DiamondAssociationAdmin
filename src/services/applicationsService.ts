@@ -159,6 +159,14 @@ export interface ApprovalStage {
   approver_role_id: string;
   is_final: boolean;
   sla_hours: number | null;
+  /**
+   * Whether this stage takes part in the flow (stage-toggle D-1). An inactive stage is
+   * SKIPPED, never deleted — the API keeps returning it so its decision history
+   * stays readable and turning it back on restores its position. Its `sequence`
+   * is not renumbered either (stage-toggle D-3), so a workflow with stages 1 and 2 off hands
+   * screens a lone stage still numbered 3: count positions, never `sequence`.
+   */
+  is_active: boolean;
   approver_role: { id: string; code: string; name: string };
 }
 
@@ -171,7 +179,13 @@ export interface ApprovalWorkflow {
   version: number;
   createdAt: string;
   updatedAt: string;
-  /** Ordered by sequence, ascending — the server sorts, the screen does not. */
+  /**
+   * Ordered by sequence, ascending — the server sorts, the screen does not.
+   *
+   * Every stage, inactive ones included: the settings screen has to show them
+   * (stage-toggle D-10) and the review screen needs them to name the stage an application is
+   * parked on after that stage was switched off. Filtering is each screen's job.
+   */
   stages: ApprovalStage[];
   /**
    * `application.max_resubmissions` — how many corrections an applicant gets
@@ -622,6 +636,35 @@ export const ApplicationsService = {
 
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   },
+
+  /**
+   * The same file as `downloadDocument`, handed back for the screen to SHOW
+   * rather than for the browser to save.
+   *
+   * One endpoint, two intentions. Download revokes its object URL a second later
+   * because the anchor click is over by then; a preview has to keep the URL
+   * alive for as long as the image is on screen, so ownership passes to the
+   * caller and `revokeDocumentPreview` is how it gives it back. Forgetting that
+   * call leaks the whole file — a 1.3 MB scan per open — for the life of the tab.
+   *
+   * `type` comes from the response rather than the filename: a reviewer's
+   * "licence.pdf" that is really a JPEG should still render, and an extension is
+   * a claim while the blob's own type is what the browser will actually honour.
+   */
+  previewDocument: async (
+    applicationId: string,
+    documentId: string,
+  ): Promise<{ url: string; type: string }> => {
+    const response = await http.get<Blob>(
+      ENDPOINTS.APPLICATIONS.downloadDocument(applicationId, documentId),
+      { responseType: 'blob' },
+    );
+
+    return { url: URL.createObjectURL(response.data), type: response.data.type };
+  },
+
+  /** Hands back what `previewDocument` allocated. Call it when the preview closes. */
+  revokeDocumentPreview: (url: string): void => URL.revokeObjectURL(url),
 
   verifyDocument: (
     applicationId: string,

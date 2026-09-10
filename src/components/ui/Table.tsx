@@ -2,7 +2,7 @@ import { Table as AntTable, type TableProps } from 'antd';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import type { ColumnType } from 'antd/es/table';
 import type { SortOrder } from 'antd/es/table/interface';
-import { useCallback, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useRef, useState, type Key, type ReactNode } from 'react';
 import Button from './Button';
 import EmptyState from './EmptyState';
 import { InlineSelect } from './Select';
@@ -16,6 +16,32 @@ export interface TableSort {
   sortOrder: 'asc' | 'desc';
 }
 
+/**
+ * Checkbox selection, opt-in.
+ *
+ * Controlled from the caller, like everything else here: `DataTable` renders
+ * the checkboxes and reports changes, but never owns which rows are checked —
+ * a page that refetches mid-selection has to be able to drop rows that no
+ * longer qualify, which it cannot do to state it does not hold.
+ */
+export interface TableSelection<T> {
+  /** The keys of the currently checked rows. */
+  selectedRowKeys: Key[];
+  /** Fired with the new keys and their matching rows on every check/uncheck. */
+  onChange: (keys: Key[], rows: T[]) => void;
+  /**
+   * Which rows may be checked at all. Omitted, every row is selectable.
+   *
+   * A row this returns `false` for gets a disabled checkbox, and — this is the
+   * point of the hook — AntD's own "select all" skips it too. A bulk action
+   * must never silently sweep up a row someone already decided; the row stays
+   * reachable, just not through the batch.
+   */
+  isSelectable?: (record: T) => boolean;
+  /** Tooltip on a disabled checkbox, explaining why that row cannot join the batch. */
+  disabledReason?: (record: T) => string | undefined;
+}
+
 /*
   `summary` is omitted, not inherited. AntD's `summary` is a render function for
   a pinned footer ROW inside the table; ours is a node for the left half of the
@@ -24,7 +50,7 @@ export interface TableSort {
 */
 export interface DataTableProps<T> extends Omit<
   TableProps<T>,
-  'pagination' | 'loading' | 'summary'
+  'pagination' | 'loading' | 'summary' | 'rowSelection'
 > {
   loading?: boolean;
   error?: { message: string; requestId?: string } | null;
@@ -59,6 +85,12 @@ export interface DataTableProps<T> extends Omit<
   /** Shown above the table when rows are selected. */
   selectionBar?: ReactNode;
   /**
+   * Checkbox selection. Opt-in — leave it out and the table renders exactly as
+   * it always has, with no checkbox column at all. See `TableSelection` for the
+   * shape.
+   */
+  selection?: TableSelection<T>;
+  /**
    * Left half of the footer bar — counts, totals, whatever the page can say
    * about the whole set rather than the current page. The right half (range and
    * pagination) is built from the envelope and is not a caller's business.
@@ -76,6 +108,22 @@ export interface DataTableProps<T> extends Omit<
    * the only reading that survives paging.
    */
   serial?: boolean;
+  /**
+   * Size to the rows instead of filling the parent.
+   *
+   * The default is a table that fills its card and scrolls its own body, which
+   * is right for a list page: the pagination bar stays on the bottom edge
+   * instead of floating mid-card on a short list. It needs a parent of definite
+   * height, and its inner box is `flex-1` — in an auto-height parent that
+   * resolves to 0 and the table renders a header over nothing.
+   *
+   * Set this where the table is one block among several in a scrolling column —
+   * a drawer, a detail panel — and the surface should end where the data ends.
+   * Height then comes from the rows, and the page around it does the scrolling.
+   * Not for paginated lists: without a fixed body the pagination bar rides at
+   * the end of the rows rather than the foot of the card.
+   */
+  autoHeight?: boolean;
 }
 
 const ANT_ORDER: Record<'asc' | 'desc', SortOrder> = { asc: 'ascend', desc: 'descend' };
@@ -106,9 +154,11 @@ export const DataTable = <T extends object>({
   filtered = false,
   onClearFilter,
   selectionBar,
+  selection,
   summary,
   unit,
   serial = false,
+  autoHeight = false,
   dataSource,
   columns,
   onRow,
@@ -195,6 +245,32 @@ export const DataTable = <T extends object>({
   const from = pagination ? (pagination.page - 1) * pagination.limit + 1 : 1;
   const to = pagination ? Math.min(pagination.page * pagination.limit, pagination.total) : 0;
   const showFooter = Boolean(pagination && pagination.total > 0);
+
+  /*
+    AntD's own checkbox column, not one of ours in `columns` — which is what
+    puts it ahead of `withSerial` below without any ordering code here. AntD
+    always injects `rowSelection`'s column before whatever `columns` holds.
+
+    `getCheckboxProps` is also what makes "select all" skip the rows
+    `isSelectable` rejects: AntD computes the header checkbox's own target set
+    from the same selectable rows, so a select-all never reaches a row its
+    checkbox refused one at a time.
+  */
+  const rowSelection: TableProps<T>['rowSelection'] | undefined = selection
+    ? {
+        selectedRowKeys: selection.selectedRowKeys,
+        onChange: (keys, rows) => selection.onChange(keys, rows),
+        getCheckboxProps: (record: T) => {
+          const selectable = selection.isSelectable ? selection.isSelectable(record) : true;
+          const reason = !selectable ? selection.disabledReason?.(record) : undefined;
+
+          return {
+            disabled: !selectable,
+            ...(reason ? { title: reason } : {}),
+          };
+        },
+      }
+    : undefined;
 
   /**
    * Push the active sort onto the column it belongs to. Without this the table
@@ -318,15 +394,23 @@ export const DataTable = <T extends object>({
       the card and on a long one it scrolled off the screen entirely — you had to
       reach the end of the data to find the control that takes you past it.
     */
-    <div className="flex h-full min-h-0 flex-col">
+    <div className={autoHeight ? 'flex flex-col' : 'flex h-full min-h-0 flex-col'}>
       {selectionBar ? (
         <div className="mb-2 flex items-center gap-3 rounded-md border border-border bg-surface-subtle px-3 py-2 text-supporting">
           {selectionBar}
         </div>
       ) : null}
 
-      {/* The box AntD measures itself against; it does not scroll, its body does. */}
-      <div ref={measureRef} className="min-h-0 flex-1 overflow-hidden">
+      {/*
+        The box AntD measures itself against; it does not scroll, its body does.
+        Under `autoHeight` there is nothing to measure against — the box takes
+        the rows' own height and `scroll.y` is left off below, so AntD keeps one
+        table rather than splitting a fixed body off the header.
+      */}
+      <div
+        {...(autoHeight ? {} : { ref: measureRef })}
+        className={autoHeight ? undefined : 'min-h-0 flex-1 overflow-hidden'}
+      >
         <AntTable<T>
           /*
             A row click that opens a record must not fire when the user was
@@ -375,9 +459,10 @@ export const DataTable = <T extends object>({
           rowKey={(record: T) => String((record as { id?: unknown }).id)}
           dataSource={dataSource}
           columns={fluidColumns}
+          rowSelection={rowSelection}
           loading={loading}
           pagination={false}
-          scroll={{ x: minTableWidth, y: bodyHeight }}
+          scroll={autoHeight ? { x: minTableWidth } : { x: minTableWidth, y: bodyHeight }}
           onChange={(_pagination, _filters, sorter, extra) => {
             // The same callback fires for paging and filtering; pagination has its
             // own handler, so anything that is not a sort is somebody else's event.

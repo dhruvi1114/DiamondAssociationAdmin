@@ -96,8 +96,13 @@ export const ENDPOINTS = {
   DOCUMENTS: {
     verify: (id: string) => `${API_BASE}/admin/documents/${id}/verify`,
     /**
-     * Shared by both audiences — the caller declares which one it is with
-     * `x-audience: admin`, and the service decides entitlement (rbac.md §6).
+     * Shared by both audiences. The route reads which one from the JWT's own
+     * `aud` claim (`authenticateEitherAudience`, `member.routes.ts`), and the
+     * service decides entitlement (rbac.md §6).
+     *
+     * Callers must NOT send an `x-audience` header. It was the first design and
+     * was dropped: it is not in CORS `allowedHeaders` (`security.ts`), so a
+     * browser blocks the request at the preflight.
      */
     download: (id: string) => `${API_BASE}/documents/${id}/download`,
   },
@@ -140,6 +145,9 @@ export const ENDPOINTS = {
     reject: (id: string) => `${API_BASE}/admin/event-registrations/${id}/reject`,
     PAYMENT_SUBMISSIONS: `${API_BASE}/admin/payment-submissions`,
     verifyPayment: (id: string) => `${API_BASE}/admin/payment-submissions/${id}/verify`,
+    /* The receipt the payer attached. Streamed behind `payment.view`, never a
+       public path — the file is evidence about somebody's bank account. */
+    paymentProof: (id: string) => `${API_BASE}/admin/payment-submissions/${id}/proof`,
     rejectPayment: (id: string) => `${API_BASE}/admin/payment-submissions/${id}/reject`,
   },
 

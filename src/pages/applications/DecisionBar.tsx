@@ -110,8 +110,19 @@ export const DecisionBar = ({
   const stage = application.current_stage;
   const company = application.company_name;
 
+  /*
+    Where an approval sends this: the next ACTIVE stage after the current one,
+    which is what `resolveApproval` does on the server (stage-toggle D-8).
+
+    It used to be `sequence + 1`. Sequences are not renumbered when a stage is
+    switched off (stage-toggle D-3), so that arithmetic named a stage the flow skips — and on
+    an application parked on a switched-off stage it named the stage after the
+    one nobody is working. `stages` arrives ordered by sequence, so the first
+    active stage past the current position is the answer; `undefined` means the
+    approval finishes the application rather than clearing a step of it.
+  */
   const nextStage = stage
-    ? stages.find((candidate) => candidate.sequence === stage.sequence + 1)
+    ? stages.find((candidate) => candidate.is_active && candidate.sequence > stage.sequence)
     : undefined;
 
   /**
@@ -153,9 +164,15 @@ export const DecisionBar = ({
         return `Approved. Member ${activation.memberCode} created, invoice ${activation.invoiceNumber} issued for ${formatMoney(activation.totalAmount)}.`;
       }
 
+      /*
+        No next active stage means the approval ended the flow, so it must not
+        be reported as a step cleared on the way to somewhere. The fallback used
+        to promise "the next stage" unconditionally; with two stages switched off
+        there frequently is not one, and the receipt has to say so.
+      */
       return nextStage
         ? `Stage cleared. ${company} moves to ${nextStage.name}, decided by ${nextStage.approver_role.name}.`
-        : `Stage cleared. ${company} moves to the next stage.`;
+        : `Approved. No further stage follows this one, so ${company}’s application is complete.`;
     }
 
     if (decision === 'reject') {
@@ -325,7 +342,9 @@ export const DecisionBar = ({
 
   const canApprove = can('application.approve');
   const canReject = can('application.reject');
-  const canReassign = can('application.reassign');
+  // Belongs to the commented-out "Move to another stage" button below. Restore
+  // it with that button.
+  // const canReassign = can('application.reassign');
   const canDecideAnything = canApprove || canReject;
 
   /*
@@ -441,7 +460,18 @@ export const DecisionBar = ({
                 for a reviewer who never hovers anything.
               */}
               <span className="inline-flex items-center gap-2">
-                {stage?.is_final ? 'Approve and Activate' : 'Approve Application'}
+                {/*
+                  The exact condition `resolveApproval` uses: this approval ends
+                  the application if the stage is final OR no active stage
+                  follows it (stage-toggle D-8). `is_final` alone was not enough — on an
+                  application parked on a switched-off, non-final stage the
+                  server approves outright, so the button would have read
+                  "Approve Application" while activating the member, with the
+                  dialog behind it saying "Approve and activate".
+                */}
+                {stage && (stage.is_final || !nextStage)
+                  ? 'Approve and Activate'
+                  : 'Approve Application'}
                 {approveBlocked ? <Lock size={14} strokeWidth={1.5} aria-hidden /> : null}
               </span>
             </Button>
@@ -485,6 +515,15 @@ export const DecisionBar = ({
             </p>
           ) : null}
 
+          {/*
+            Hidden at the client's request (2026-09-09).
+
+            With the workflow down to a single stage (stage-toggle D-2) there is
+            nowhere to move an application TO: the reassign dialog would offer a
+            list of one, which is the stage it is already on. The permission,
+            the dialog and the server route all still exist, so restoring this is
+            uncommenting.
+
           {canReassign ? (
             <Button
               block
@@ -499,6 +538,7 @@ export const DecisionBar = ({
               Move to another stage
             </Button>
           ) : null}
+          */}
         </div>
       </Card>
 

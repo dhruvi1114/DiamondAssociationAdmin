@@ -3,7 +3,9 @@ import dayjs from 'dayjs';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { EyeOutlined } from '@ant-design/icons';
-import { Tooltip } from 'antd';
+// `Tooltip` and `formatAge` below belong to the commented-out Waiting column.
+// Uncomment both when that column comes back.
+// import { Tooltip } from 'antd';
 import {
   Badge,
   Button,
@@ -19,13 +21,12 @@ import {
   PageHeader,
   RowActions,
   SearchInput,
-  StackedCell,
   StatusChip,
-  Tabs,
   TextCell,
 } from '@/components/ui';
 import type { TableSort } from '@/components/ui';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useLocationOptions, asOptions } from '@/hooks/useLocationOptions';
 import ApplicationsService, {
   APPLICATION_SORT_COLUMNS,
   type ApplicationQueueRow,
@@ -34,44 +35,38 @@ import ApplicationsService, {
   type ApprovalWorkflow,
 } from '@/services/applicationsService';
 import MastersService, { type Category } from '@/services/mastersService';
-import MembersService, {
-  type MemberListRow,
-  type MemberSortBy,
-  type MemberStatus,
-} from '@/services/membersService';
-import type { ApiResult, PaginationMeta } from '@/services/BaseService';
+import type { PaginationMeta } from '@/services/BaseService';
 import { asDisplayError, type DisplayError } from '@/utils/apiError';
-import { formatAge, hoursSince } from '@/utils/format';
+import { hoursSince } from '@/utils/format'; // + `formatAge` with the Waiting column
 
 /**
- * A-03 — the application queue (AJ-2, step one), plus Member Company (the
- * company directory, formerly its own nav item — see `constant/navigation.tsx`,
- * where the entry is kept but hidden so `/members/:id` still resolves a header
- * title).
+ * A-03 — the member request queue (AJ-2, step one).
+ *
+ * Its own page. Member Companies used to sit beside it as a second tab, and the
+ * pairing taught the wrong thing: a request is work that arrives, gets decided
+ * and leaves, while the directory is a standing register you look things up in.
+ * Two jobs, two entries in the rail — see `pages/members/MemberList.tsx`.
  *
  * A work queue answers one question before any other: **what needs me, and what
  * has been waiting longest?** Everything here follows from that.
  *
  *  - The default view narrows to stages the reviewer's own roles own ("My
- *    queue" vs "All applications" — a filter, not a tab: unlike Member Company,
- *    it is the same table and the same columns, just narrowed, so it belongs
- *    behind the Filter button next to Status, Stage and Category rather than
- *    switching to a different screen). Holding `application.approve` says what
- *    you may do; the stage's role says whose queue it is (rbac.md §4), and a
- *    queue full of other people's work is the fastest way to teach someone to
- *    ignore their queue.
+ *    queue" vs "All requests" — a filter, not a page of its own: it is the same
+ *    table and the same columns, just narrowed, so it belongs behind the Filter
+ *    button next to Status, Stage and Category). Holding `application.approve`
+ *    says what you may do; the stage's role says whose queue it is (rbac.md §4),
+ *    and a queue full of other people's work is the fastest way to teach someone
+ *    to ignore their queue.
  *  - "Documents pending" is the same kind of filter, for the same reason: it
- *    narrows this list to applications carrying an unchecked document rather
- *    than showing a different list.
+ *    narrows this list to requests carrying an unchecked document rather than
+ *    showing a different list.
  *  - The default sort is oldest first. A newest-first queue starves the row that
  *    has been waiting a week, which is precisely the row an SLA exists for.
  *  - Age is a column, not a timestamp. "12 Aug 2026, 14:05" makes the reader do
  *    subtraction; "6 days" is the number they were going to compute anyway.
  *
- * Filters and sort live in the URL so a reviewer who opens an application,
- * decides it and comes back lands where they left (tables.md). Member Company
- * is a different table entirely (different columns, a different status enum)
- * and keeps its own state local, the way Categories' and Locations' tabs do.
+ * Filters and sort live in the URL so a reviewer who opens a request, decides it
+ * and comes back lands where they left (tables.md).
  */
 
 const DEFAULT_SORT: TableSort = { sortBy: 'submitted_at', sortOrder: 'asc' };
@@ -133,62 +128,6 @@ const DOCUMENTS_OPTIONS: Array<{ value: 'any' | 'pending'; label: string }> = [
   { value: 'pending', label: 'Pending only' },
 ];
 
-/**
- * City and state names for the two tabs' location filters.
- *
- * Names, not ids, because that is what the API matches on — the master-id
- * columns on `MemberAddresses` are nullable and older rows leave them empty,
- * while the text ones never are.
- *
- * Paged to exhaustion rather than fetched once. The masters list caps `limit` at
- * 100 and the city master already holds 183 rows, so a single page would have
- * offered the first hundred alphabetically and silently dropped the rest —
- * "Surat" among them, on a filter built for a Surat-based association. Two
- * requests, and the panel offers every city there is.
- *
- * Either list failing costs a filter, not the screen, the same way the category
- * and workflow lookups behave.
- */
-const PAGE_SIZE = 100;
-/** Backstop against a paging bug turning into an unbounded request loop. */
-const MAX_PAGES = 20;
-
-const fetchAllNames = async <T extends { name: string }>(
-  fetchPage: (page: number) => Promise<ApiResult<T[]>>,
-): Promise<string[]> => {
-  const first = await fetchPage(1);
-  const names = first.data.map((row) => row.name);
-  const pages = Math.min(first.pagination?.totalPages ?? 1, MAX_PAGES);
-
-  if (pages <= 1) return names;
-
-  const rest = await Promise.all(
-    Array.from({ length: pages - 1 }, (_, index) => fetchPage(index + 2)),
-  );
-
-  return [...names, ...rest.flatMap((result) => result.data.map((row) => row.name))];
-};
-
-const useLocationOptions = () => {
-  const [states, setStates] = useState<string[]>([]);
-  const [cities, setCities] = useState<string[]>([]);
-
-  useEffect(() => {
-    fetchAllNames((page) => MastersService.listStates({ page, limit: PAGE_SIZE, activeOnly: true }))
-      .then(setStates)
-      .catch(() => setStates([]));
-
-    fetchAllNames((page) => MastersService.listCities({ page, limit: PAGE_SIZE, activeOnly: true }))
-      .then(setCities)
-      .catch(() => setCities([]));
-  }, []);
-
-  return { states, cities };
-};
-
-/** A name list as `MultiSelect` options — the value IS the name. */
-const asOptions = (names: string[]) => names.map((name) => ({ value: name, label: name }));
-
 /** `?status=A,B` ⇄ `['A','B']`. Absent and empty are the same thing: no filter. */
 const readList = (value: string | null): string[] =>
   value ? value.split(',').filter(Boolean) : [];
@@ -198,20 +137,11 @@ const isSortable = (value: string): value is ApplicationSortBy =>
   APPLICATION_SORT_COLUMNS.includes(value as ApplicationSortBy);
 
 /**
- * Each tab hands its search box and filter panel up to the tab row instead of
- * drawing a toolbar row of its own — same mechanism as `Categories.tsx` and
- * `Locations.tsx`.
+ * The queue, filtered rather than tabbed: "My queue" vs "All requests" and
+ * "Documents pending" all narrow this one table, so they live behind the Filter
+ * button alongside Status, Stage and Category.
  */
-interface TabBodyProps {
-  onRegisterSearch?: (node: ReactNode) => void;
-}
-
-/**
- * The application queue, filtered rather than tabbed by scope: "My queue" vs
- * "All applications" and "Documents pending" all narrow this one table, so
- * they live behind the Filter button alongside Status, Stage and Category.
- */
-const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
+export const ApplicationQueue = () => {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const { isSuperAdmin } = usePermissions();
@@ -447,168 +377,154 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
     [patchParams],
   );
 
-  useEffect(() => {
-    onRegisterSearch?.(
-      <>
-        <SearchInput
-          value={search}
-          onChange={onSearch}
-          label="Search applications"
-          placeholder="Search company, application number or GST"
-          className="w-[320px] max-w-full"
-        />
+  /* Search first, then the filter panel — the toolbar order every list uses. */
+  const toolbar = (
+    <>
+      <SearchInput
+        value={search}
+        onChange={onSearch}
+        label="Search member requests"
+        placeholder="Search company, application number or GST"
+        className="w-[320px] max-w-full"
+      />
 
-        <FilterDropdown<QueueFilters>
-          value={filters}
-          emptyValue={EMPTY_QUEUE_FILTERS}
-          onApply={applyFilters}
-          onClear={clearFilters}
-          activeCount={activeFilterCount}
-        >
-          {(draft, setDraft) => (
-            <>
-              {/*
-                A single-value dropdown, not a multi-select: "mine" and "all" are
-                mutually exclusive views, and a control that lets you tick both
-                is asking a question with no answer. `FormSelect` rather than
-                `Select` because `FilterGroup` above already draws the label.
+      <FilterDropdown<QueueFilters>
+        value={filters}
+        emptyValue={EMPTY_QUEUE_FILTERS}
+        onApply={applyFilters}
+        onClear={clearFilters}
+        activeCount={activeFilterCount}
+      >
+        {(draft, setDraft) => (
+          <>
+            {/*
+              A single-value dropdown, not a multi-select: "mine" and "all" are
+              mutually exclusive views, and a control that lets you tick both
+              is asking a question with no answer. `FormSelect` rather than
+              `Select` because `FilterGroup` above already draws the label.
 
-                `searchThreshold` high enough to hide the search box — it is a
-                fixed two-value list, and a search field over two options is
-                furniture.
-              */}
-              <FilterGroup label="Show">
-                <FormSelect
-                  className="w-full"
-                  value={draft.mine ? 'mine' : 'all'}
-                  options={SHOW_OPTIONS}
-                  searchThreshold={8}
-                  onChange={(next) => setDraft((d) => ({ ...d, mine: next === 'mine' }))}
-                />
-              </FilterGroup>
+              `searchThreshold` high enough to hide the search box — it is a
+              fixed two-value list, and a search field over two options is
+              furniture.
+            */}
+            <FilterGroup label="Show">
+              <FormSelect
+                className="w-full"
+                value={draft.mine ? 'mine' : 'all'}
+                options={SHOW_OPTIONS}
+                searchThreshold={8}
+                onChange={(next) => setDraft((d) => ({ ...d, mine: next === 'mine' }))}
+              />
+            </FilterGroup>
 
-              {/*
-                Multi-select, so a reviewer can watch "submitted OR under
-                review" in one list. There is no "Any status" option any
-                more: an empty selection IS "any", and an option that means
-                the same as choosing nothing is a third state to explain.
-              */}
-              <FilterGroup label="Status">
-                <MultiSelect
-                  value={draft.status}
-                  placeholder="Any status"
-                  searchThreshold={8}
-                  options={STATUS_OPTIONS}
-                  onChange={(next) =>
-                    setDraft((d) => ({ ...d, status: next as ApplicationStatus[] }))
-                  }
-                />
-              </FilterGroup>
+            {/*
+              Multi-select, so a reviewer can watch "submitted OR under
+              review" in one list. There is no "Any status" option any
+              more: an empty selection IS "any", and an option that means
+              the same as choosing nothing is a third state to explain.
+            */}
+            <FilterGroup label="Status">
+              <MultiSelect
+                value={draft.status}
+                placeholder="Any status"
+                searchThreshold={8}
+                options={STATUS_OPTIONS}
+                onChange={(next) =>
+                  setDraft((d) => ({ ...d, status: next as ApplicationStatus[] }))
+                }
+              />
+            </FilterGroup>
 
-              <FilterGroup label="Stage">
-                <MultiSelect
-                  value={draft.stage}
-                  placeholder="Any stage"
-                  searchThreshold={8}
-                  options={(workflow?.stages ?? []).map((stage) => ({
-                    value: stage.id,
-                    label: `${stage.sequence}. ${stage.name}`,
-                  }))}
-                  onChange={(next) => setDraft((d) => ({ ...d, stage: next.map(String) }))}
-                />
-              </FilterGroup>
+            <FilterGroup label="Stage">
+              <MultiSelect
+                value={draft.stage}
+                placeholder="Any stage"
+                searchThreshold={8}
+                options={(workflow?.stages ?? []).map((stage) => ({
+                  value: stage.id,
+                  label: `${stage.sequence}. ${stage.name}`,
+                }))}
+                onChange={(next) => setDraft((d) => ({ ...d, stage: next.map(String) }))}
+              />
+            </FilterGroup>
 
-              <FilterGroup label="Category">
-                <MultiSelect
-                  value={draft.category}
-                  placeholder="Any category"
-                  options={categories.map((category) => ({
-                    value: category.id,
-                    label: category.name,
-                  }))}
-                  onChange={(next) => setDraft((d) => ({ ...d, category: next.map(String) }))}
-                />
-              </FilterGroup>
+            <FilterGroup label="Category">
+              <MultiSelect
+                value={draft.category}
+                placeholder="Any category"
+                options={categories.map((category) => ({
+                  value: category.id,
+                  label: category.name,
+                }))}
+                onChange={(next) => setDraft((d) => ({ ...d, category: next.map(String) }))}
+              />
+            </FilterGroup>
 
-              {/*
-                Matched on the NAME, which is what the API compares against —
-                the master-id columns on an address are nullable and older rows
-                leave them empty. Multi-select, because "Surat OR Ahmedabad" is
-                a real question and a single-value control cannot ask it.
-              */}
-              <FilterGroup label="State">
-                <MultiSelect
-                  value={draft.state}
-                  placeholder="Any state"
-                  searchThreshold={8}
-                  options={asOptions(locations.states)}
-                  onChange={(next) => setDraft((d) => ({ ...d, state: next.map(String) }))}
-                />
-              </FilterGroup>
+            {/*
+              Matched on the NAME, which is what the API compares against —
+              the master-id columns on an address are nullable and older rows
+              leave them empty. Multi-select, because "Surat OR Ahmedabad" is
+              a real question and a single-value control cannot ask it.
+            */}
+            <FilterGroup label="State">
+              <MultiSelect
+                value={draft.state}
+                placeholder="Any state"
+                searchThreshold={8}
+                options={asOptions(locations.states)}
+                onChange={(next) => setDraft((d) => ({ ...d, state: next.map(String) }))}
+              />
+            </FilterGroup>
 
-              <FilterGroup label="City">
-                <MultiSelect
-                  value={draft.city}
-                  placeholder="Any city"
-                  searchThreshold={8}
-                  options={asOptions(locations.cities)}
-                  onChange={(next) => setDraft((d) => ({ ...d, city: next.map(String) }))}
-                />
-              </FilterGroup>
+            <FilterGroup label="City">
+              <MultiSelect
+                value={draft.city}
+                placeholder="Any city"
+                searchThreshold={8}
+                options={asOptions(locations.cities)}
+                onChange={(next) => setDraft((d) => ({ ...d, city: next.map(String) }))}
+              />
+            </FilterGroup>
 
-              <FilterGroup label="Documents">
-                <FormSelect
-                  className="w-full"
-                  value={draft.pendingOnly ? 'pending' : 'any'}
-                  options={DOCUMENTS_OPTIONS}
-                  searchThreshold={8}
-                  onChange={(next) => setDraft((d) => ({ ...d, pendingOnly: next === 'pending' }))}
-                />
-              </FilterGroup>
+            <FilterGroup label="Documents">
+              <FormSelect
+                className="w-full"
+                value={draft.pendingOnly ? 'pending' : 'any'}
+                options={DOCUMENTS_OPTIONS}
+                searchThreshold={8}
+                onChange={(next) => setDraft((d) => ({ ...d, pendingOnly: next === 'pending' }))}
+              />
+            </FilterGroup>
 
-              {/*
-                The submitted date, matching the column the queue sorts by. Both
-                ends are optional — "everything since Monday" is asked as often
-                as a closed window, and requiring an end date would make a
-                reviewer invent one.
-              */}
-              <FilterGroup label="Submitted">
-                <DatePicker.RangePicker
-                  className="w-full"
-                  format="YYYY-MM-DD"
-                  allowEmpty={[true, true]}
-                  value={[
-                    draft.submittedFrom ? dayjs(draft.submittedFrom) : null,
-                    draft.submittedTo ? dayjs(draft.submittedTo) : null,
-                  ]}
-                  onChange={(range) =>
-                    setDraft((d) => ({
-                      ...d,
-                      submittedFrom: range?.[0] ? range[0].format('YYYY-MM-DD') : '',
-                      submittedTo: range?.[1] ? range[1].format('YYYY-MM-DD') : '',
-                    }))
-                  }
-                />
-              </FilterGroup>
-            </>
-          )}
-        </FilterDropdown>
-      </>,
-    );
-
-    return () => onRegisterSearch?.(null);
-  }, [
-    search,
-    onSearch,
-    onRegisterSearch,
-    filters,
-    applyFilters,
-    clearFilters,
-    activeFilterCount,
-    workflow,
-    categories,
-    locations,
-  ]);
+            {/*
+              The submitted date, matching the column the queue sorts by. Both
+              ends are optional — "everything since Monday" is asked as often
+              as a closed window, and requiring an end date would make a
+              reviewer invent one.
+            */}
+            <FilterGroup label="Submitted">
+              <DatePicker.RangePicker
+                className="w-full"
+                format="YYYY-MM-DD"
+                allowEmpty={[true, true]}
+                value={[
+                  draft.submittedFrom ? dayjs(draft.submittedFrom) : null,
+                  draft.submittedTo ? dayjs(draft.submittedTo) : null,
+                ]}
+                onChange={(range) =>
+                  setDraft((d) => ({
+                    ...d,
+                    submittedFrom: range?.[0] ? range[0].format('YYYY-MM-DD') : '',
+                    submittedTo: range?.[1] ? range[1].format('YYYY-MM-DD') : '',
+                  }))
+                }
+              />
+            </FilterGroup>
+          </>
+        )}
+      </FilterDropdown>
+    </>
+  );
 
   /**
    * The association's correction limit, carried on the workflow because
@@ -650,18 +566,27 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
         ),
       },
 
+      /*
+        Hidden on request (2026-09-09). Whether a company is listed in the public
+        directory is a fact about a MEMBER, and this queue is about requests that
+        have not become members yet — on most rows it can only say "Not active".
+        The Member Companies page is where the answer belongs.
+        
+        Inner comment markers are neutered to `(* *)` only because block comments
+        do not nest. Restore them with the column.
+
       {
         title: 'In Directory',
         dataIndex: 'directory_visible',
         key: 'directory_visible',
         width: 150,
-        /*
+        (*
           Read-only, and it explains rather than controls. Three switches decide
           whether a company is listed — the association's global switch, the
           firm's ACTIVE status, and the member's own choice — and only the first
           is staff's. A toggle here would imply otherwise, so the cell names
           whose decision is in force and stops there.
-        */
+        *)
         render: (_: unknown, row: ApplicationQueueRow) => {
           if (row.member_status && row.member_status !== 'ACTIVE') {
             return <StatusChip domain="directory" status="NOT_ACTIVE" />;
@@ -678,6 +603,8 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
           return <NotAvailable />;
         },
       },
+      */
+
       {
         title: 'Category',
         dataIndex: 'category_name',
@@ -693,6 +620,28 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
             <NotAvailable />
           ),
       },
+      /*
+        Beside Category, not out past the contact columns. What a request IS and
+        where it has got to are read together — a Grower still under review and a
+        Grower already approved are different rows to a reviewer — and the two
+        sat far enough apart that seeing both meant scrolling sideways.
+      */
+      {
+        // SUBMITTED reads "New" straight from the chip now (`constant/status.ts`)
+        // rather than a second badge glued on beside it — one label, not two
+        // saying the same thing.
+        title: 'Status',
+        dataIndex: 'status',
+        key: 'status',
+        sorter: true,
+        width: 140,
+        render: (value: ApplicationStatus) => <StatusChip domain="application" status={value} />,
+      },
+      /*
+        Hidden on request (2026-09-09). Stage is still a filter in the Filters
+        panel and still drives "My queue", and the review screen shows it in full —
+        this column repeated it on a table already wide enough to scroll.
+
       {
         title: 'Stage',
         dataIndex: 'stage_name',
@@ -700,14 +649,16 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
         width: 170,
         render: (_: unknown, row: ApplicationQueueRow) =>
           row.stage_name ? (
-            /* The stage alone. The second line used to name whose queue it is —
+            (* The stage alone. The second line used to name whose queue it is —
                "ADMIN decides" — which repeated the same role on nearly every row
-               and doubled the height of the whole table to say it. */
+               and doubled the height of the whole table to say it. *)
             <span className="text-supporting text-fg">{row.stage_name}</span>
           ) : (
             <NotAvailable />
           ),
       },
+      */
+
       {
         title: 'Email',
         dataIndex: 'applicant_email',
@@ -743,6 +694,10 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
             <NotAvailable />
           ),
       },
+      /*
+        Hidden on request (2026-09-09). Read on the review screen, where the
+        verifier has the document beside it; nobody scans a queue by PAN.
+
       {
         title: 'PAN No.',
         dataIndex: 'pan_number',
@@ -755,6 +710,8 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
             <NotAvailable />
           ),
       },
+      */
+
       {
         title: 'Company Type',
         dataIndex: 'company_type_name',
@@ -766,17 +723,6 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
           ) : (
             <NotAvailable />
           ),
-      },
-      {
-        // SUBMITTED reads "New" straight from the chip now (`constant/status.ts`)
-        // rather than a second badge glued on beside it — one label, not two
-        // saying the same thing.
-        title: 'Status',
-        dataIndex: 'status',
-        key: 'status',
-        sorter: true,
-        width: 140,
-        render: (value: ApplicationStatus) => <StatusChip domain="application" status={value} />,
       },
       {
         // Plain text, not a chip — `pending_documents`/`document_count` are a
@@ -844,12 +790,22 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
           );
         },
       },
+      /*
+        Hidden on request (2026-09-09). The Overdue column beside it already
+        answers the question this one exists for — is this row late — and says it
+        in a word rather than a duration the reader has to compare against an SLA
+        they cannot see. The queue also still sorts oldest-first by default, so
+        the longest wait is at the top whether or not a column names it.
+
+        The `//` line comments inside are rewritten to `(*` only because block
+        comments do not nest. Restore them with the column.
+
       {
         title: 'Waiting',
         dataIndex: 'submitted_at',
         key: 'waiting',
-        // 110 wrapped "under an hour" onto two lines and made that row taller
-        // than every other one in the table.
+        (* 110 wrapped "under an hour" onto two lines and made that row taller
+        (* than every other one in the table.
         width: 150,
         render: (_: unknown, row: ApplicationQueueRow) => {
           const age = hoursSince(row.submitted_at);
@@ -869,6 +825,8 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
           );
         },
       },
+      */
+
       {
         title: 'Submitted',
         dataIndex: 'submitted_at',
@@ -972,6 +930,11 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
         width: 140,
         render: (value: string | null) => <TextCell value={value} width={116} />,
       },
+      /*
+        Hidden on request (2026-09-09). State is still a filter in the Filters
+        panel — asking "which of these are Gujarat" is the real question, and the
+        panel answers it without a column that repeats one value down the page.
+
       {
         title: 'State',
         dataIndex: 'state',
@@ -979,6 +942,8 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
         width: 140,
         render: (value: string | null) => <TextCell value={value} width={116} />,
       },
+      */
+
       {
         title: 'Actions',
         key: 'actions',
@@ -1028,558 +993,47 @@ const ApplicationsTab = ({ onRegisterSearch }: TabBodyProps) => {
         };
 
   return (
-    <Card flush className="min-h-0 flex-1">
-      <DataTable<ApplicationQueueRow>
-        unit="applications"
-        serial
-        rowKey="id"
-        loading={loading}
-        error={error}
-        onRetry={() => void load()}
-        pagination={pagination}
-        onPageChange={(nextPage, nextLimit) =>
-          patchParams(
-            { page: String(nextPage), limit: String(nextLimit) },
-            // The page IS the change here, so it must survive the reset.
-            { keepPage: true },
-          )
-        }
-        sort={sort}
-        onSortChange={(next) =>
-          patchParams({
-            sortBy: next?.sortBy ?? null,
-            sortOrder: next?.sortOrder ?? null,
-          })
-        }
-        dataSource={rows}
-        columns={columns}
-        onRow={(row) => ({
-          onClick: () => navigate(`/applications/${row.id}`),
-          className: 'cursor-pointer',
-        })}
-        filtered={hasFilters}
-        onClearFilter={clearFilters}
-        emptyTitle={empty.title}
-        emptyDescription={empty.description}
-        emptyAction={empty.action}
-      />
-    </Card>
-  );
-};
-
-/* -------------------------------------------------------------------------- */
-/* Member Company                                                              */
-/* -------------------------------------------------------------------------- */
-
-/*
-  DRAFT and PENDING (awaiting payment) are absent on purpose: the backend
-  never returns them here any more — see the doc comment on `listMembers` —
-  so offering them as filter choices would only ever narrow the list to zero.
-*/
-const MEMBER_STATUS_OPTIONS: Array<{ value: MemberStatus; label: string }> = [
-  { value: 'ACTIVE', label: 'Active' },
-  { value: 'SUSPENDED', label: 'Suspended' },
-  { value: 'EXPIRED', label: 'Expired' },
-  { value: 'TERMINATED', label: 'Terminated' },
-];
-
-const MEMBER_DEFAULT_SORT: TableSort = { sortBy: 'createdAt', sortOrder: 'desc' };
-
-interface MemberFilters {
-  status: MemberStatus[];
-  category: string[];
-  /** Primary-address city / state NAMES — the same match the API does. */
-  city: string[];
-  state: string[];
-}
-
-const EMPTY_MEMBER_FILTERS: MemberFilters = { status: [], category: [], city: [], state: [] };
-
-/**
- * The company directory, moved here from its own nav item. Kept as local
- * component state rather than the URL — unlike the three application tabs
- * above, this is a new addition with no established "come back and find your
- * filter" contract yet, and it would otherwise share URL keys (`status`,
- * `category`) with a different enum than the application tabs use for the
- * same names (Categories' and Locations' tabs make the same choice).
- */
-const MemberCompanyTab = ({ onRegisterSearch }: TabBodyProps) => {
-  const navigate = useNavigate();
-
-  const [rows, setRows] = useState<MemberListRow[]>([]);
-  const [pagination, setPagination] = useState<PaginationMeta | undefined>();
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<DisplayError | null>(null);
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const [filters, setFilters] = useState<MemberFilters>(EMPTY_MEMBER_FILTERS);
-  const [sort, setSort] = useState<TableSort>(MEMBER_DEFAULT_SORT);
-  const locations = useLocationOptions();
-
-  const hasFilters = Boolean(
-    search ||
-    filters.status.length ||
-    filters.category.length ||
-    filters.city.length ||
-    filters.state.length,
-  );
-  const activeFilterCount = [filters.status, filters.category, filters.city, filters.state].filter(
-    (f) => f.length,
-  ).length;
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const result = await MembersService.list({
-        page,
-        limit: 20,
-        ...(search ? { search } : {}),
-        ...(filters.status.length ? { status: filters.status.join(',') } : {}),
-        ...(filters.category.length ? { category_id: filters.category.join(',') } : {}),
-        ...(filters.city.length ? { city: filters.city.join(',') } : {}),
-        ...(filters.state.length ? { state: filters.state.join(',') } : {}),
-        sortBy: sort.sortBy as MemberSortBy,
-        sortOrder: sort.sortOrder,
-      });
-
-      setRows(result.data);
-      setPagination(result.pagination);
-    } catch (caught) {
-      setError(asDisplayError(caught));
-    } finally {
-      setLoading(false);
-    }
-  }, [page, search, filters, sort.sortBy, sort.sortOrder]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useEffect(() => {
-    MastersService.listCategories({ limit: 100 })
-      .then((result) => setCategories(result.data))
-      .catch(() => setCategories([]));
-  }, []);
-
-  const onSearch = useCallback((next: string) => {
-    setSearch(next);
-    setPage(1);
-  }, []);
-
-  const applyFilters = useCallback((next: MemberFilters) => {
-    setFilters(next);
-    setPage(1);
-  }, []);
-
-  const clearFilters = useCallback(() => {
-    setSearch('');
-    setFilters(EMPTY_MEMBER_FILTERS);
-    setPage(1);
-  }, []);
-
-  useEffect(() => {
-    onRegisterSearch?.(
-      <>
-        <SearchInput
-          value={search}
-          onChange={onSearch}
-          label="Search members"
-          placeholder="Search company, legal name, code, GST or email"
-          className="w-[320px] max-w-full"
-        />
-
-        <FilterDropdown<MemberFilters>
-          value={filters}
-          emptyValue={EMPTY_MEMBER_FILTERS}
-          onApply={applyFilters}
-          onClear={clearFilters}
-          activeCount={activeFilterCount}
-        >
-          {(draft, setDraft) => (
-            <>
-              <FilterGroup label="Status">
-                <MultiSelect
-                  value={draft.status}
-                  placeholder="Any status"
-                  searchThreshold={8}
-                  options={MEMBER_STATUS_OPTIONS}
-                  onChange={(next) => setDraft((d) => ({ ...d, status: next as MemberStatus[] }))}
-                />
-              </FilterGroup>
-
-              <FilterGroup label="Category">
-                <MultiSelect
-                  value={draft.category}
-                  placeholder="Any category"
-                  options={categories.map((category) => ({
-                    value: category.id,
-                    label: category.name,
-                  }))}
-                  onChange={(next) => setDraft((d) => ({ ...d, category: next.map(String) }))}
-                />
-              </FilterGroup>
-
-              {/* By name, matching the API — see `useLocationOptions`. */}
-              <FilterGroup label="State">
-                <MultiSelect
-                  value={draft.state}
-                  placeholder="Any state"
-                  searchThreshold={8}
-                  options={asOptions(locations.states)}
-                  onChange={(next) => setDraft((d) => ({ ...d, state: next.map(String) }))}
-                />
-              </FilterGroup>
-
-              <FilterGroup label="City">
-                <MultiSelect
-                  value={draft.city}
-                  placeholder="Any city"
-                  searchThreshold={8}
-                  options={asOptions(locations.cities)}
-                  onChange={(next) => setDraft((d) => ({ ...d, city: next.map(String) }))}
-                />
-              </FilterGroup>
-            </>
-          )}
-        </FilterDropdown>
-      </>,
-    );
-
-    return () => onRegisterSearch?.(null);
-  }, [
-    search,
-    onSearch,
-    onRegisterSearch,
-    filters,
-    applyFilters,
-    clearFilters,
-    activeFilterCount,
-    categories,
-    locations,
-  ]);
-
-  const columns = useMemo(
-    () => [
-      {
-        title: 'Member',
-        dataIndex: 'company_name',
-        key: 'company_name',
-        sorter: true,
-        width: 220,
-        render: (_: unknown, row: MemberListRow) => (
-          /* The city moved out to its own column — it is filterable now, and a
-             value you can filter on is a column, not a suffix on a name. */
-          <StackedCell
-            primary={<Highlight text={row.company_name} query={search} />}
-            secondary={
-              row.legal_name && row.legal_name !== row.company_name ? row.legal_name : null
-            }
-          />
-        ),
-      },
-      {
-        title: 'Code',
-        dataIndex: 'member_code',
-        key: 'member_code',
-        sorter: true,
-        width: 170,
-        render: (value: string | null) =>
-          value ? (
-            <span className="font-mono text-supporting text-fg">
-              <Highlight text={value} query={search} />
-            </span>
-          ) : (
-            <NotAvailable />
-          ),
-      },
-      {
-        title: 'Class',
-        dataIndex: 'category_name',
-        key: 'category_name',
-        width: 130,
-        render: (_: unknown, row: MemberListRow) =>
-          row.category_name ? (
-            <span className="text-supporting text-fg">
-              <Highlight text={row.category_name} query={search} />
-              {row.tier_name ? <span className="text-fg-muted"> · {row.tier_name}</span> : null}
-            </span>
-          ) : (
-            <NotAvailable />
-          ),
-      },
-      {
-        title: 'Status',
-        dataIndex: 'status',
-        key: 'status',
-        sorter: true,
-        width: 145,
-        render: (value: MemberStatus) => <StatusChip domain="member" status={value} />,
-      },
-      {
-        // Plain text, not a chip — a count read at a glance, not a state
-        // worth a coloured pill of its own.
-        title: 'Documents',
-        dataIndex: 'pending_documents',
-        key: 'pending_documents',
-        width: 130,
-        render: (_: unknown, row: MemberListRow) => {
-          const pending = Number(row.pending_documents);
-          const total = Number(row.document_count);
-
-          if (total === 0) return <NotAvailable />;
-
-          return (
-            <span className="tabular text-supporting text-fg">
-              {pending > 0 ? `${pending} of ${total} pending` : `${total} on file`}
-            </span>
-          );
-        },
-      },
-      {
-        title: 'Login Email',
-        dataIndex: 'contact_email',
-        key: 'contact_email',
-        width: 220,
-        render: (value: string | null) => <TextCell value={value} width={196} />,
-      },
-      {
-        title: 'Mobile',
-        dataIndex: 'mobile',
-        key: 'mobile',
-        width: 130,
-        render: (_: unknown, row: MemberListRow) =>
-          row.mobile ? (
-            <span className="font-mono text-supporting text-fg">{row.mobile}</span>
-          ) : (
-            <NotAvailable />
-          ),
-      },
-      {
-        title: 'GST No.',
-        dataIndex: 'gst_number',
-        key: 'gst_number',
-        width: 160,
-        render: (_: unknown, row: MemberListRow) =>
-          row.gst_number ? (
-            <span className="font-mono text-supporting text-fg">
-              <Highlight text={row.gst_number} query={search} />
-            </span>
-          ) : (
-            <NotAvailable />
-          ),
-      },
-      {
-        title: 'PAN No.',
-        dataIndex: 'pan_number',
-        key: 'pan_number',
-        width: 130,
-        render: (_: unknown, row: MemberListRow) =>
-          row.pan_number ? (
-            <span className="font-mono text-supporting text-fg">{row.pan_number}</span>
-          ) : (
-            <NotAvailable />
-          ),
-      },
-      {
-        title: 'Company Type',
-        dataIndex: 'company_type_name',
-        key: 'company_type_name',
-        width: 150,
-        render: (_: unknown, row: MemberListRow) =>
-          row.company_type_name ? (
-            <span className="text-supporting text-fg">{row.company_type_name}</span>
-          ) : (
-            <NotAvailable />
-          ),
-      },
-      {
-        title: 'Created',
-        dataIndex: 'createdAt',
-        key: 'createdAt',
-        sorter: true,
-        width: 130,
-        render: (_: unknown, row: MemberListRow) => <DateCell value={row.createdAt} />,
-      },
-      {
-        title: 'Updated',
-        dataIndex: 'updatedAt',
-        key: 'updatedAt',
-        width: 130,
-        render: (_: unknown, row: MemberListRow) => <DateCell value={row.updatedAt} />,
-      },
-      {
-        title: 'Created By',
-        dataIndex: 'created_by',
-        key: 'created_by',
-        width: 150,
-        render: (_: unknown, row: MemberListRow) =>
-          row.created_by ? (
-            <span className="text-supporting text-fg">{row.created_by}</span>
-          ) : (
-            <NotAvailable />
-          ),
-      },
-      {
-        title: 'Updated By',
-        dataIndex: 'updated_by',
-        key: 'updated_by',
-        width: 150,
-        render: (_: unknown, row: MemberListRow) =>
-          row.updated_by ? (
-            <span className="text-supporting text-fg">{row.updated_by}</span>
-          ) : (
-            <NotAvailable label="System" />
-          ),
-      },
-      {
-        title: 'Approved By',
-        dataIndex: 'approved_by',
-        key: 'approved_by',
-        width: 180,
-        render: (_: unknown, row: MemberListRow) =>
-          row.approved_by ? (
-            <span className="text-supporting text-fg">{row.approved_by}</span>
-          ) : (
-            <NotAvailable label="System" />
-          ),
-      },
-      /*
-        Only while something on this page carries one.
-
-        For a member that means TERMINATED — a row in this list was approved to
-        get here, so there is no application rejection to report. On a healthy
-        directory the column would otherwise be a full column of "N/A".
-      */
-      ...(rows.some((row) => row.rejected_by)
-        ? [
-            {
-              title: 'Rejected By',
-              dataIndex: 'rejected_by',
-              key: 'rejected_by',
-              width: 180,
-              render: (_: unknown, row: MemberListRow) =>
-                row.rejected_by ? (
-                  <span className="text-supporting text-fg">{row.rejected_by}</span>
-                ) : (
-                  <NotAvailable />
-                ),
-            },
-          ]
-        : []),
-      {
-        title: 'City',
-        dataIndex: 'city',
-        key: 'city',
-        width: 140,
-        render: (value: string | null) => <TextCell value={value} width={116} />,
-      },
-      {
-        title: 'State',
-        dataIndex: 'state',
-        key: 'state',
-        width: 140,
-        render: (value: string | null) => <TextCell value={value} width={116} />,
-      },
-      {
-        title: 'Actions',
-        key: 'actions',
-        width: 80,
-        fixed: 'right' as const,
-        render: (_: unknown, row: MemberListRow) => (
-          <RowActions
-            actions={[
-              {
-                key: 'open',
-                icon: <EyeOutlined />,
-                label: `Open ${row.company_name}`,
-                onClick: () => navigate(`/members/${row.id}`),
-              },
-            ]}
-          />
-        ),
-      },
-    ],
-    [navigate, search, rows],
-  );
-
-  return (
-    <Card flush className="min-h-0 flex-1">
-      <DataTable<MemberListRow>
-        unit="members"
-        serial
-        rowKey="id"
-        loading={loading}
-        error={error}
-        onRetry={() => void load()}
-        pagination={pagination}
-        onPageChange={(nextPage) => setPage(nextPage)}
-        sort={sort}
-        onSortChange={(next) => setSort(next ?? MEMBER_DEFAULT_SORT)}
-        dataSource={rows}
-        columns={columns}
-        onRow={(row) => ({
-          onClick: () => navigate(`/members/${row.id}`),
-          className: 'cursor-pointer',
-        })}
-        filtered={hasFilters}
-        onClearFilter={clearFilters}
-        emptyTitle="No members yet"
-        emptyDescription="A company record appears here as soon as someone signs up and starts an application."
-      />
-    </Card>
-  );
-};
-
-/* -------------------------------------------------------------------------- */
-
-export const ApplicationQueue = () => {
-  const { can } = usePermissions();
-  const canViewMembers = can('member.view');
-
-  const [searchBox, setSearchBox] = useState<ReactNode>(null);
-  const registerSearch = useCallback((node: ReactNode) => setSearchBox(node), []);
-
-  return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader title="Applications" />
+      {/* `title` must match this page's nav label exactly — `AppShell` draws the
+          visible heading from `NAV_GROUPS`, and `PageHeader`'s own is sr-only. */}
+      <PageHeader title="Member Requests" actions={toolbar} />
 
-      {/*
-        Applications vs Member Company is a tab: two different LISTS with
-        different columns, not one list narrowed several ways. My queue / all
-        and documents-pending live inside the Applications tab's own Filter
-        panel instead — see `ApplicationsTab` above.
-
-        `queryParam="scope"` keeps it deep-linkable and matches the value
-        `/members` redirects with (`?scope=member-company`).
-
-        Tabs, search and filters share one row: `Tabs` lays its row out
-        tabs-left / actions-right, so handing the controls to it puts them on
-        the tab line instead of a second row below it.
-      */}
-      <Tabs
-        variant="pill"
-        queryParam="scope"
-        actions={searchBox}
-        items={[
-          {
-            key: 'applications',
-            label: 'Applications',
-            children: <ApplicationsTab onRegisterSearch={registerSearch} />,
-          },
-          ...(canViewMembers
-            ? [
-                {
-                  key: 'member-company',
-                  label: 'Member Company',
-                  children: <MemberCompanyTab onRegisterSearch={registerSearch} />,
-                },
-              ]
-            : []),
-        ]}
-      />
+      <Card flush className="min-h-0 flex-1">
+        <DataTable<ApplicationQueueRow>
+          unit="applications"
+          serial
+          rowKey="id"
+          loading={loading}
+          error={error}
+          onRetry={() => void load()}
+          pagination={pagination}
+          onPageChange={(nextPage, nextLimit) =>
+            patchParams(
+              { page: String(nextPage), limit: String(nextLimit) },
+              // The page IS the change here, so it must survive the reset.
+              { keepPage: true },
+            )
+          }
+          sort={sort}
+          onSortChange={(next) =>
+            patchParams({
+              sortBy: next?.sortBy ?? null,
+              sortOrder: next?.sortOrder ?? null,
+            })
+          }
+          dataSource={rows}
+          columns={columns}
+          onRow={(row) => ({
+            onClick: () => navigate(`/applications/${row.id}`),
+            className: 'cursor-pointer',
+          })}
+          filtered={hasFilters}
+          onClearFilter={clearFilters}
+          emptyTitle={empty.title}
+          emptyDescription={empty.description}
+          emptyAction={empty.action}
+        />
+      </Card>
     </div>
   );
 };

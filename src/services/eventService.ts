@@ -367,6 +367,30 @@ export const EventService = {
   ): Promise<ApiResult<{ rows: PaymentSubmissionRow[] }>> =>
     BaseService.get(`${ENDPOINTS.EVENTS.PAYMENT_SUBMISSIONS}${query(params)}`),
   verifyPayment: (id: string) => BaseService.post(ENDPOINTS.EVENTS.verifyPayment(id), {}),
+
+  /* Through `downloadFile` rather than an `<a href>`: the route needs a bearer
+     header, which a browser will not put on a plain link. */
+  downloadPaymentProof: (id: string, reference: string) =>
+    downloadFile(ENDPOINTS.EVENTS.paymentProof(id), `payment-proof-${reference}`),
+
+  /**
+   * The same file as `downloadPaymentProof`, handed back for the queue to SHOW
+   * rather than for the browser to save — mirrors
+   * `ApplicationsService.previewDocument` exactly, down to why ownership of the
+   * object URL passes to the caller. `revokePaymentProofPreview` is how it is
+   * given back; skipping that call leaks the blob for the life of the tab.
+   */
+  previewPaymentProof: async (id: string): Promise<{ url: string; type: string }> => {
+    const response = await http.get<Blob>(ENDPOINTS.EVENTS.paymentProof(id), {
+      responseType: 'blob',
+    });
+
+    return { url: URL.createObjectURL(response.data), type: response.data.type };
+  },
+
+  /** Hands back what `previewPaymentProof` allocated. Call it when the preview closes. */
+  revokePaymentProofPreview: (url: string): void => URL.revokeObjectURL(url),
+
   rejectPayment: (id: string, reason: string) =>
     BaseService.post(ENDPOINTS.EVENTS.rejectPayment(id), { reason }),
 

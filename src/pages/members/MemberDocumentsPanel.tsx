@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Download } from 'lucide-react';
+// `Download` belongs to the commented-out row action below.
+import { Eye } from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -14,6 +15,7 @@ import {
 import { usePermissions } from '@/hooks/usePermissions';
 import MembersService, { type MemberDocument } from '@/services/membersService';
 import { asDisplayError, type DisplayError } from '@/utils/apiError';
+import DocumentPreviewDialog from '@/components/DocumentPreviewDialog';
 import { formatBytes, formatDateTime } from '@/utils/format';
 
 /**
@@ -74,7 +76,10 @@ export const MemberDocumentsPanel = ({ memberId, onChanged }: MemberDocumentsPan
   const [remarksError, setRemarksError] = useState<string | undefined>();
   const [error, setError] = useState<DisplayError | null>(null);
   const [saving, setSaving] = useState(false);
-  const [downloading, setDownloading] = useState<string | null>(null);
+  // Restored with the Download row action below.
+  // const [downloading, setDownloading] = useState<string | null>(null);
+  /** The document the eye opened. Reading a file is never gated — it is the record. */
+  const [preview, setPreview] = useState<MemberDocument | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,6 +102,11 @@ export const MemberDocumentsPanel = ({ memberId, onChanged }: MemberDocumentsPan
   const verified = documents.filter((doc) => doc.verification_status === 'VERIFIED').length;
   const pending = documents.filter((doc) => doc.verification_status === 'PENDING').length;
 
+  /*
+    Belongs to the commented-out Download action below; restore the two together.
+    The preview dialog does its own downloading and its own error toast, so
+    nothing here is load-bearing while that action is hidden.
+
   const download = async (document: MemberDocument) => {
     setDownloading(document.id);
 
@@ -110,6 +120,7 @@ export const MemberDocumentsPanel = ({ memberId, onChanged }: MemberDocumentsPan
       setDownloading(null);
     }
   };
+  */
 
   const open = (document: MemberDocument, decision: Decision) => {
     setTarget({ document, decision });
@@ -211,14 +222,36 @@ export const MemberDocumentsPanel = ({ memberId, onChanged }: MemberDocumentsPan
                       </Badge>
                     ) : null}
                   </div>
-                  <div className="truncate text-12 text-fg-muted" title={document.original_name}>
-                    {document.original_name}
-                  </div>
+                  {/*
+                    The storage filename is hidden at the client's request
+                    (2026-09-09). "ChatGPT Image Jul 2, 2026, 03_17_53 PM.png"
+                    says nothing about the document it holds, and it is still
+                    beside the file itself in the preview the eye opens.
+
+                    <div className="truncate text-12 text-fg-muted" title={document.original_name}>
+                      {document.original_name}
+                    </div>
+                  */}
                 </div>
 
                 <div className="flex-none">
                   <RowActions
                     actions={[
+                      {
+                        /* First, because looking is what happens before saving —
+                           and on a member record, reading back what the committee
+                           verified is the whole reason to open this panel. */
+                        key: 'preview',
+                        icon: <Eye size={16} strokeWidth={1.5} />,
+                        label: 'Open this document',
+                        onClick: () => setPreview(document),
+                      },
+                      /*
+                        Download is hidden here at the client's request
+                        (2026-09-09). It has not gone away — it is inside the
+                        preview the eye opens, which is the order a reader wants:
+                        look first, keep a copy only if there is a reason to.
+
                       {
                         key: 'download',
                         icon: <Download size={16} strokeWidth={1.5} />,
@@ -226,6 +259,7 @@ export const MemberDocumentsPanel = ({ memberId, onChanged }: MemberDocumentsPan
                         disabled: downloading === document.id,
                         onClick: () => void download(document),
                       },
+                      */
                       /*
                         **No verify / reject here, at the client's request.**
 
@@ -264,9 +298,14 @@ export const MemberDocumentsPanel = ({ memberId, onChanged }: MemberDocumentsPan
                       }
                     : {})}
                 />
-                <span className="tabular text-11 text-fg-muted">
-                  {formatBytes(document.size_bytes)} · {document.mime_type}
-                </span>
+                {/*
+                  Size and type hidden at the client's request (2026-09-09) —
+                  both are in the preview, next to the file they describe.
+
+                  <span className="tabular text-11 text-fg-muted">
+                    {formatBytes(document.size_bytes)} · {document.mime_type}
+                  </span>
+                */}
               </div>
 
               {document.remarks ? (
@@ -327,6 +366,32 @@ export const MemberDocumentsPanel = ({ memberId, onChanged }: MemberDocumentsPan
           </div>
         </Dialog>
       ) : null}
+
+      {/*
+        The same preview the application drawer uses. It takes its loader and its
+        download rather than a service, which is what lets one component serve a
+        member document and an application document without either screen
+        knowing about the other's endpoint.
+      */}
+      <DocumentPreviewDialog
+        documentId={preview?.id ?? null}
+        label={preview ? documentLabel(preview) : ''}
+        {...(preview
+          ? {
+              /* The filename, size and type the row no longer prints — here,
+                 beside the file they actually describe. */
+              description: `${preview.original_name} · ${formatBytes(preview.size_bytes)} · ${preview.mime_type}`,
+            }
+          : {})}
+        load={(documentId) => MembersService.previewDocument(documentId)}
+        revoke={MembersService.revokeDocumentPreview}
+        download={() =>
+          preview
+            ? MembersService.downloadDocument(preview.id, preview.original_name)
+            : Promise.resolve()
+        }
+        onClose={() => setPreview(null)}
+      />
     </Card>
   );
 };

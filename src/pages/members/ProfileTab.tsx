@@ -408,7 +408,8 @@ export const ProfileTab = ({ member, onChanged }: ProfileTabProps) => {
           <Group
             icon={<Tags size={16} strokeWidth={1.5} />}
             title="Membership plan"
-            description="The plan this term was priced from, and what it renews at."
+            /* Subtitle hidden at the client's request (2026-09-09).
+               description="The plan this term was priced from, and what it renews at." */
           >
             <Field
               label="Plan"

@@ -26,15 +26,27 @@ export interface FieldLabelProps {
  * anyone driving by keyboard — and the sr-only copy means a screen reader gets
  * it without needing the tooltip to open at all.
  */
+/*
+  `min-w-0` and `break-words` are load-bearing, not tidying.
+
+  Without them this sat as an unshrinkable inline-flex inside its grid cell, and
+  a label with no space in it — `events.booking_lookup_enabled`, the raw key a
+  setting falls back to before somebody writes it a name — ran straight out of
+  the cell and printed on top of the label beside it. CSS does not break on a
+  full stop or an underscore, so the string never wrapped on its own.
+
+  The fallback path is exactly where this bites: a label short enough to have
+  been given a proper name is a label that fits.
+*/
 export const FieldLabel = ({ label, help, className = '', iconSize = 14 }: FieldLabelProps) => (
-  <span className={`inline-flex items-center gap-1.5 ${className}`.trim()}>
-    {label}
+  <span className={`inline-flex min-w-0 max-w-full items-center gap-1.5 ${className}`.trim()}>
+    <span className="min-w-0 break-words">{label}</span>
     <Tooltip title={help}>
       <span
         tabIndex={0}
         role="note"
         aria-label={help}
-        className="inline-flex cursor-help items-center rounded-full text-fg-subtle transition-colors duration-100 hover:text-fg"
+        className="inline-flex shrink-0 cursor-help items-center rounded-full text-fg-subtle transition-colors duration-100 hover:text-fg"
       >
         <CircleHelp size={iconSize} strokeWidth={1.5} aria-hidden />
       </span>

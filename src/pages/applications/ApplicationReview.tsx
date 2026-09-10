@@ -10,7 +10,7 @@ import {
   ErrorState,
   PageHeader,
   Skeleton,
-  StatusDot,
+  StatusIcon,
   Stepper,
 } from '@/components/ui';
 import { usePageTitle } from '@/hooks/usePageTitle';
@@ -72,7 +72,27 @@ import SnapshotPanel from './SnapshotPanel';
  * own that drawing; the booking detail page needed the same trail for a
  * different sequence, and two copies is how two screens end up disagreeing about
  * what "done" looks like.
+ *
+ * The trail is the stages an application actually passes through, so a stage
+ * that has been switched off is not on it (stage-toggle D-1). The one exception is a stage an
+ * application is *parked* on: switching a stage off does not move the rows
+ * sitting there (stage-toggle D-4), and a trail that quietly omitted the reviewer's own
+ * position would be answering a different question than the one they asked.
  */
+/**
+ * The stages this application actually passes through.
+ *
+ * Active stages, plus the one it is parked on if that has since been switched
+ * off (stage-toggle D-4) — a trail that omitted the reviewer's own position
+ * would answer a different question than the one they asked.
+ *
+ * Lifted out of `StageTrail` because the card AROUND the trail now depends on
+ * how many there are, and two places counting the same list their own way is
+ * how a card ends up rendering empty around a component that returned null.
+ */
+const visibleStages = (stages: ApprovalStage[], currentStageId: string | null) =>
+  stages.filter((stage) => stage.is_active || stage.id === currentStageId);
+
 const StageTrail = ({
   stages,
   currentStageId,
@@ -82,19 +102,38 @@ const StageTrail = ({
   currentStageId: string | null;
   status: ApplicationDetail['status'];
 }) => {
-  if (stages.length === 0) return null;
+  /*
+    `stages` arrives ordered by sequence and carries the inactive ones too, so
+    the filter keeps that order and the parked stage keeps its real place in it.
+  */
+  const trail = visibleStages(stages, currentStageId);
 
-  const currentIndex = stages.findIndex((stage) => stage.id === currentStageId);
-  const current = stages.find((stage) => stage.id === currentStageId);
+  /*
+    Nothing to draw below two. A trail is a picture of a journey, and a journey
+    of one step is a picture of where you already are — which the header's status
+    chip and the Actions card both say, in words, without a progress bar implying
+    there is somewhere further to go. With the workflow down to a single stage
+    (stage-toggle D-2) that is now the ordinary case, not an edge one.
+  */
+  if (trail.length < 2) return null;
+
+  const currentIndex = trail.findIndex((stage) => stage.id === currentStageId);
+  const current = currentIndex === -1 ? undefined : trail[currentIndex];
 
   return (
     <Stepper
+      /*
+        Position in the trail, never the stage's own `sequence` (stage-toggle D-7). Sequences
+        are left alone when a stage is switched off, so the single active stage
+        of the shipped configuration is still numbered 3 — printing it would read
+        "Stage 3 of 1".
+      */
       label={
         current
-          ? `Stage ${current.sequence} of ${stages.length}: ${current.name}`
-          : `Application closed after ${stages.length} stage(s)`
+          ? `Stage ${currentIndex + 1} of ${trail.length}: ${current.name}`
+          : `Application closed after ${trail.length} stage(s)`
       }
-      steps={stages.map((stage, index) => ({
+      steps={trail.map((stage, index) => ({
         key: stage.id,
         label: stage.name,
         caption: `${stage.approver_role.name} decides${
@@ -251,11 +290,25 @@ const DocumentsSummaryCard = ({
                 <span className="mt-[2px] flex-none text-fg-muted" aria-hidden>
                   <FileText size={16} strokeWidth={1.5} />
                 </span>
+                {/*
+                  Two lines, never five. The name owns the first; the three
+                  qualifiers — required, version, upload date — share the second,
+                  separated by middots.
+
+                  They used to stack: a badge per line and the date broken across
+                  two more, because this card is a column in a sidebar and each
+                  qualifier was claiming a full-width row of its own. Five lines
+                  of chrome per document buried the one thing the card is for,
+                  which is which file is holding the approval up. The dot moving
+                  to a `StatusIcon` is what freed the width to do it — the label
+                  "Awaiting verification" was taking the right-hand third of
+                  every row to repeat a word the icon now carries.
+                */}
                 <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="truncate text-supporting font-medium text-fg">
-                      {documentLabel(document)}
-                    </span>
+                  <p className="m-0 truncate text-supporting font-medium text-fg">
+                    {documentLabel(document)}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-12 text-fg-muted">
                     {/*
                       `is_required` is absent on an older response, and absent
                       reads as required — which is what every screen assumed
@@ -275,15 +328,22 @@ const DocumentsSummaryCard = ({
                         {`v${document.version}`}
                       </Badge>
                     ) : null}
+                    <span className="whitespace-nowrap">
+                      Uploaded <span className="tabular">{formatDate(document.createdAt)}</span>
+                    </span>
                   </div>
-                  <p className="m-0 text-12 text-fg-muted">
-                    Uploaded on <span className="tabular">{formatDate(document.createdAt)}</span>
-                  </p>
                 </div>
               </div>
 
               <span className="flex-none pt-[2px]">
-                <StatusDot domain="document" status={document.verification_status} />
+                {/*
+                  Wordless here on purpose. The status repeats on every row of a
+                  narrow card, so the reader learns the three shapes once and
+                  reads the rest by shape; the word is still on hover and in the
+                  accessible name. The count above the list already spells the
+                  same three states out in full.
+                */}
+                <StatusIcon domain="document" status={document.verification_status} />
               </span>
             </li>
           ))}
@@ -424,6 +484,10 @@ export const ApplicationReview = () => {
    */
   const score = scoreDocuments(application.documents);
 
+  /* The same list `StageTrail` draws, so the card and its contents cannot
+     disagree about whether there is a trail worth showing. */
+  const showTrail = visibleStages(stages, application.current_stage_id).length > 1;
+
   return (
     <div className="flex flex-col">
       {/* Contributes the hidden h1 only — the visible name is in the header
@@ -452,7 +516,7 @@ export const ApplicationReview = () => {
           <div className="min-w-0">
             <Breadcrumbs
               items={[
-                { label: 'Applications', to: '/applications' },
+                { label: 'Member Requests', to: '/applications' },
                 { label: application.application_number ?? 'Draft application' },
               ]}
             />
@@ -500,7 +564,22 @@ export const ApplicationReview = () => {
       */}
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-4">
         <div className="flex flex-col gap-4 xl:col-span-3">
-          {stages.length > 0 ? (
+          {/*
+            The card appears only if it has something to hold.
+
+            It carries two independent things: the correction count and the stage
+            trail. The trail hides itself below two stages (see `StageTrail`), so
+            on the single-stage workflow this was drawing a bordered box around
+            nothing — `stages.length > 0` asked whether a workflow EXISTS, not
+            whether this card has anything to say about it.
+
+            Both halves are tested, not just the trail: a first-time application
+            on a one-stage workflow has neither and the card goes away, while a
+            corrected one keeps its "Correction 2 of 3" badge — the number that
+            decides what Reject will do, and not something to lose along with a
+            stepper nobody asked for.
+          */}
+          {showTrail || application.resubmission_count > 0 ? (
             <Card>
               {/*
                 How many corrections this application has already been through,

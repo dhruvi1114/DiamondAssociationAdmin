@@ -20,6 +20,7 @@ import Locations from '@/pages/masters/Locations';
 import Forbidden from '@/pages/Forbidden';
 import Login from '@/pages/Login';
 import MemberDetail from '@/pages/members/MemberDetail';
+import MemberList from '@/pages/members/MemberList';
 import NotFound from '@/pages/NotFound';
 import Events from '@/pages/events/Events';
 import News from '@/pages/news/News';
@@ -122,6 +123,24 @@ const RequirePermission = ({ anyOf, children }: { anyOf: string[]; children: Rea
   }
 
   return <>{children}</>;
+};
+
+/**
+ * `/applications` — the member request queue, plus one redirect it inherited.
+ *
+ * The queue and the member-company directory shared this URL as two tabs, told
+ * apart by `?scope=member-company`. They are two pages now, so that one value
+ * forwards to `/members`; every other search string (the queue's own filters,
+ * sort and page) belongs to the queue and is left exactly as it is.
+ */
+const MemberRequestsEntry = () => {
+  const { search } = useLocation();
+
+  if (new URLSearchParams(search).get('scope') === 'member-company') {
+    return <Navigate to="/members" replace />;
+  }
+
+  return <ApplicationQueue />;
 };
 
 /**
@@ -229,14 +248,19 @@ export const AppRoutes = () => {
           `/members/:id` in React Router's own scoring, so the placeholder for it
           still wins its own URL — but only while this route stays dynamic.
 
-          The list itself moved to the Applications page's Member Company tab.
-          The old path stays as a redirect rather than a 404 — same reason
-          `/settings/admin-users` redirects below: it is in bookmarks, in links
-          elsewhere in the app, and in anything already written down.
+          The directory is its own page again: it spent a release as a tab on
+          `/applications`, which put a standing register and a work queue behind
+          one nav entry. `?scope=member-company` is what that tab deep-linked
+          with, so `MemberRequestsEntry` below still honours it — the links
+          are in bookmarks and in anything already written down.
         */}
         <Route
           path="/members"
-          element={<Navigate to="/applications?scope=member-company" replace />}
+          element={
+            <RequirePermission anyOf={['member.view']}>
+              <MemberList />
+            </RequirePermission>
+          }
         />
         <Route
           path="/members/:id"
@@ -257,7 +281,7 @@ export const AppRoutes = () => {
           path="/applications"
           element={
             <RequirePermission anyOf={['application.view']}>
-              <ApplicationQueue />
+              <MemberRequestsEntry />
             </RequirePermission>
           }
         />
