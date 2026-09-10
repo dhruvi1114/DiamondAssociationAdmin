@@ -73,8 +73,23 @@ const map: Record<string, StatusPresentation> = {
 
   // --- Application -----------------------------------------------------------
   'application.DRAFT': { variant: 'neutral', label: 'Draft' },
-  'application.SUBMITTED': { variant: 'info', label: 'New' },
-  'application.UNDER_REVIEW': { variant: 'info', label: 'Under review' },
+  /*
+    SUBMITTED and UNDER_REVIEW now read the same word. The membership approval
+    workflow currently runs one active stage (Final approval) with Document
+    verification and Committee review both switched off, and UNDER_REVIEW is
+    reachable only by a manual reassign (`application.service.ts:517`) — the
+    single stage's own approve always ends the application, it never advances
+    it to a second stage. So a reviewer cannot act on SUBMITTED any differently
+    than on UNDER_REVIEW: both mean "nobody has decided this yet". Distinct
+    labels would claim a distinction that no longer exists.
+
+    If Document verification or Committee review is switched back on, the two
+    statuses become meaningfully different again (has this cleared a stage, or
+    not) and these two labels should be revisited together with
+    `ApplicationQueue.tsx`'s STATUS_OPTIONS, which groups them the same way.
+  */
+  'application.SUBMITTED': { variant: 'info', label: 'Pending' },
+  'application.UNDER_REVIEW': { variant: 'info', label: 'Pending' },
   // The two endings of one Reject button, and they must not read the same
   // (spec item 18). `RETURNED_FOR_CORRECTION` is a rejection the applicant can
   // still answer — warning, and the label names the move that is theirs.

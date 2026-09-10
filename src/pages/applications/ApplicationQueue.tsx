@@ -71,22 +71,69 @@ import { hoursSince } from '@/utils/format'; // + `formatAge` with the Waiting c
 
 const DEFAULT_SORT: TableSort = { sortBy: 'submitted_at', sortOrder: 'asc' };
 
-const STATUS_OPTIONS: Array<{ value: ApplicationStatus; label: string }> = [
-  // `SUBMITTED` and `UNDER_REVIEW` both read "Under review" to a member, and
-  // `constant/status.ts` is deliberately written in the member's vocabulary. A
-  // reviewer needs the difference — nobody has touched this yet, versus it has
-  // already cleared a stage — so the filter says it and the row carries the
-  // "New" badge that approval-workflow.md §7 asks for.
-  { value: 'SUBMITTED', label: 'New — no stage decided yet' },
-  { value: 'UNDER_REVIEW', label: 'Under review — past stage 1' },
+/**
+ * The filter's own option values. Not `ApplicationStatus` any more: `Pending`
+ * has to stand for two real statuses at once (`SUBMITTED` and `UNDER_REVIEW`),
+ * which a one-to-one `value` can't express.
+ *
+ * `DRAFT` and `WITHDRAWN` are gone from the list entirely — nothing on this
+ * screen can reach either one (public registration creates `SUBMITTED`
+ * directly, and nothing in the app sets `WITHDRAWN`), so both options always
+ * returned an empty table. They remain valid `ApplicationStatus` values
+ * everywhere else; only this filter stops offering them.
+ */
+type StatusFilterOption = 'PENDING' | 'RETURNED_FOR_CORRECTION' | 'APPROVED' | 'REJECTED';
+
+const STATUS_OPTIONS: Array<{ value: StatusFilterOption; label: string }> = [
+  // Same reasoning as `constant/status.ts`: with only the Final approval stage
+  // active, `SUBMITTED` and `UNDER_REVIEW` are both "nobody has decided this
+  // yet" to a reviewer, so one option covers both underlying statuses.
+  { value: 'PENDING', label: 'Pending' },
   // Not a third kind of decision — a rejection that still has corrections left
-  // on it. The label says whose move it is, because that is what a reviewer
-  // filtering the queue actually wants to know (spec D-2).
-  { value: 'RETURNED_FOR_CORRECTION', label: 'Rejected — awaiting resubmission' },
+  // on it. "Action needed" says whose move it is (the applicant's) rather than
+  // repeating "Rejected", which the Rejected option below already owns for the
+  // closed ending.
+  { value: 'RETURNED_FOR_CORRECTION', label: 'Action needed' },
   { value: 'APPROVED', label: 'Approved' },
   { value: 'REJECTED', label: 'Rejected' },
-  { value: 'WITHDRAWN', label: 'Withdrawn' },
 ];
+
+/**
+ * One filter option can stand for more than one real status. Keyed the same
+ * way whichever direction it's read: expanding an option list into the
+ * statuses the URL/API carry, or collapsing a status list back into the
+ * options that should show as checked.
+ */
+const STATUS_OPTION_STATUSES: Record<StatusFilterOption, ApplicationStatus[]> = {
+  PENDING: ['SUBMITTED', 'UNDER_REVIEW'],
+  RETURNED_FOR_CORRECTION: ['RETURNED_FOR_CORRECTION'],
+  APPROVED: ['APPROVED'],
+  REJECTED: ['REJECTED'],
+};
+
+/**
+ * Option values → the real statuses the URL and the API see. The wire format
+ * is untouched: `PENDING` still becomes `SUBMITTED,UNDER_REVIEW` in
+ * `?status=` and in the request, exactly as if the two had been picked by
+ * hand — the backend has no way to tell "Pending" was ever one click.
+ */
+const expandStatusOptions = (options: StatusFilterOption[]): ApplicationStatus[] =>
+  Array.from(new Set(options.flatMap((option) => STATUS_OPTION_STATUSES[option])));
+
+/**
+ * The inverse, for the MultiSelect's own `value` — read on load, on reload,
+ * and off a pasted link. An option counts as checked when ANY of the statuses
+ * it stands for is present, not only when every one is: a link carrying just
+ * `?status=SUBMITTED` (hand-written, or from before this change) should still
+ * show "Pending" selected rather than nothing, which is the naive version of
+ * this mapping — round-trip a full `SUBMITTED,UNDER_REVIEW` through it and it
+ * shows nothing checked, because it looked for an exact-match pair instead of
+ * an overlap.
+ */
+const collapseStatusesToOptions = (statuses: ApplicationStatus[]): StatusFilterOption[] =>
+  (Object.keys(STATUS_OPTION_STATUSES) as StatusFilterOption[]).filter((option) =>
+    STATUS_OPTION_STATUSES[option].some((status) => statuses.includes(status)),
+  );
 
 /** The filters that live behind the panel button. */
 interface QueueFilters {
@@ -425,15 +472,30 @@ export const ApplicationQueue = () => {
             */}
             <FilterGroup label="Status">
               <MultiSelect
-                value={draft.status}
+                // `draft.status` stays real `ApplicationStatus` values end to
+                // end (URL, API, `QueueFilters`) — only the MultiSelect's own
+                // value/onChange cross through the option ⇄ status mapping.
+                value={collapseStatusesToOptions(draft.status)}
                 placeholder="Any status"
                 searchThreshold={8}
                 options={STATUS_OPTIONS}
                 onChange={(next) =>
-                  setDraft((d) => ({ ...d, status: next as ApplicationStatus[] }))
+                  setDraft((d) => ({
+                    ...d,
+                    status: expandStatusOptions(next as StatusFilterOption[]),
+                  }))
                 }
               />
             </FilterGroup>
+
+            {/*
+              Hidden on request (2026-09-10). Only ONE approval stage is switched
+              on — "Final approval"; Document verification and Committee review are
+              both off — so every open application sits at the same stage and the
+              filter cannot narrow anything. Switch a second stage back on and this
+              becomes useful again, which is why it is commented rather than deleted.
+              The `stage` filter state, its URL param and the request all still work
+              untouched, so restoring it is uncommenting this block.
 
             <FilterGroup label="Stage">
               <MultiSelect
@@ -447,6 +509,7 @@ export const ApplicationQueue = () => {
                 onChange={(next) => setDraft((d) => ({ ...d, stage: next.map(String) }))}
               />
             </FilterGroup>
+            */}
 
             <FilterGroup label="Category">
               <MultiSelect
@@ -627,15 +690,40 @@ export const ApplicationQueue = () => {
         sat far enough apart that seeing both meant scrolling sideways.
       */
       {
-        // SUBMITTED reads "New" straight from the chip now (`constant/status.ts`)
-        // rather than a second badge glued on beside it — one label, not two
-        // saying the same thing.
+        // SUBMITTED and UNDER_REVIEW both read "Pending" straight from the chip
+        // (`constant/status.ts`) rather than a second badge glued on beside it —
+        // one label, not two saying the same thing.
+        //
+        // APPROVED is different: it is a fact about the APPLICATION, and it
+        // cannot say whether the resulting member has ever paid. An approved row
+        // whose member is still `PENDING` (`Member.status` — "approved, awaiting
+        // first payment", `member.prisma:13`) says so in the chip's tooltip,
+        // otherwise a reviewer has to open the application one at a time to find out.
         title: 'Status',
         dataIndex: 'status',
         key: 'status',
         sorter: true,
         width: 140,
-        render: (value: ApplicationStatus) => <StatusChip domain="application" status={value} />,
+        render: (value: ApplicationStatus, row: ApplicationQueueRow) => {
+          /*
+            The unpaid qualifier rides the chip's own tooltip rather than a Badge
+            beside it. A visible badge did not fit: this column is 140px, and the
+            pair overflowed into Email and printed on top of the addresses. Hover
+            also matches how the rest of this table explains itself, and it keeps
+            one chip per row so the column stays scannable.
+          */
+          const awaitingPayment = value === 'APPROVED' && row.member_status === 'PENDING';
+
+          return (
+            <StatusChip
+              domain="application"
+              status={value}
+              {...(awaitingPayment
+                ? { tooltip: 'Approved — awaiting payment of the first invoice.' }
+                : {})}
+            />
+          );
+        },
       },
       /*
         Hidden on request (2026-09-09). Stage is still a filter in the Filters

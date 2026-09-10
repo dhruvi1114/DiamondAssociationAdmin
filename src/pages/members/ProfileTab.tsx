@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Building2, Download, IdCard, Receipt as ReceiptIcon, Tags } from 'lucide-react';
+import {
+  Building2,
+  CircleCheck,
+  Download,
+  IdCard,
+  Receipt as ReceiptIcon,
+  Tags,
+} from 'lucide-react';
 import { Form, Input, Switch, Tooltip } from 'antd';
 import {
   Alert,
@@ -370,25 +377,33 @@ export const ProfileTab = ({ member, onChanged }: ProfileTabProps) => {
           <Field label="Country" value={registered?.country} />
           <Field label="State" value={registered?.state} />
           <Field label="City" value={registered?.city} />
-          <div className="col-span-2 md:col-span-3 lg:col-span-4">
-            <Field
-              label="Registered address"
-              value={
-                registered
-                  ? [
-                      registered.line1,
-                      registered.line2,
-                      registered.city,
-                      registered.state,
-                      registered.country,
-                      registered.pincode,
-                    ]
-                      .filter(Boolean)
-                      .join(', ')
-                  : null
-              }
-            />
-          </div>
+          {/*
+            Hidden at the client's request (2026-09-10). Nothing is lost: the
+            Addresses card further down this page prints the same registered
+            address in full, and Country / State / City above already carry the
+            part a reviewer scans for. This line repeated all three and then
+            added the street on top.
+
+            <div className="col-span-2 md:col-span-3 lg:col-span-4">
+              <Field
+                label="Registered address"
+                value={
+                  registered
+                    ? [
+                        registered.line1,
+                        registered.line2,
+                        registered.city,
+                        registered.state,
+                        registered.country,
+                        registered.pincode,
+                      ]
+                        .filter(Boolean)
+                        .join(', ')
+                    : null
+                }
+              />
+            </div>
+          */}
           <div className="col-span-2 md:col-span-3 lg:col-span-4">
             <Field label="About" value={member.about} />
           </div>
@@ -511,21 +526,62 @@ export const ProfileTab = ({ member, onChanged }: ProfileTabProps) => {
                         />
                       </Tooltip>
                     ) : null}
+                    {/*
+                      An icon beside the other two, not a worded button on the row
+                      below (client request, 2026-09-10). All three are actions on
+                      the same invoice, and having two of them in one corner and
+                      the third down beside the amount read as two unrelated
+                      controls.
+
+                      Icon-only, so the tooltip and `aria-label` carry the words —
+                      and they are the full sentence, because this one WRITES a
+                      payment where its neighbours only open a document.
+                    */}
+                    {canRecordPayment &&
+                    (invoice.status === 'ISSUED' ||
+                      invoice.status === 'PARTIALLY_PAID' ||
+                      invoice.status === 'OVERDUE') ? (
+                      <Tooltip title="Mark as paid">
+                        <Button
+                          variant="secondary"
+                          size="small"
+                          aria-label={`Mark invoice ${invoice.invoice_number} as paid`}
+                          /*
+                            Green on a plain button, not `variant="success"`. A
+                            filled green control beside two quiet secondary ones
+                            would read as the card's primary action, which
+                            recording an offline payment is not — the tint marks
+                            it as the money action without shouting. The token is
+                            the same `status-success` the Verified chip uses, so
+                            it tracks the palette rather than a hex here.
+                          */
+                          icon={
+                            <CircleCheck
+                              size={14}
+                              strokeWidth={1.5}
+                              /*
+                                Inline `var()`, the way `Toast.tsx` colours its
+                                icons — not a `text-` utility. AntD colours the
+                                icon slot from the button's own variant, and a
+                                utility class was losing to it; an inline
+                                declaration wins wherever the rule comes from.
+                                Still the token, never a hex, so the palette
+                                stays in charge.
+                              */
+                              style={{ color: 'var(--status-success-fg)' }}
+                            />
+                          }
+                          onClick={() => payment.ask(invoice)}
+                        />
+                      </Tooltip>
+                    ) : null}
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <span className="text-12 text-fg-muted">
                     Due <DateCell value={invoice.due_date} />
                   </span>
-                  <div className="flex items-center gap-3">
-                    <MoneyText amount={invoice.total_amount} currency={invoice.currency} />
-                    {canRecordPayment &&
-                    (invoice.status === 'ISSUED' ||
-                      invoice.status === 'PARTIALLY_PAID' ||
-                      invoice.status === 'OVERDUE') ? (
-                      <Button onClick={() => payment.ask(invoice)}>Mark as paid</Button>
-                    ) : null}
-                  </div>
+                  <MoneyText amount={invoice.total_amount} currency={invoice.currency} />
                 </div>
               </li>
             ))}
