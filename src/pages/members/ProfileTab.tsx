@@ -67,8 +67,11 @@ const withTax = (net: string, taxRate: string): string =>
   (Number(net) * (1 + Number(taxRate) / 100)).toFixed(2);
 
 export const ProfileTab = ({ member, onChanged }: ProfileTabProps) => {
-  /* Newest expiry first, at most one — the repository already takes only that row. */
-  const currentTerm = member.terms?.[0] ?? null;
+  /* `current_term` is what the member is covered by right now (Members.current_term_id).
+     `terms` (newest expiry, at most one) falls back to that only for members fetched before
+     this field existed on the response — once a renewal exists, `terms` is the unpaid next
+     term, not the current one. */
+  const currentTerm = member.current_term ?? member.terms?.[0] ?? null;
 
   const { can } = usePermissions();
   // Unused while the Edit profile action is commented out; kept because the
@@ -436,10 +439,14 @@ export const ProfileTab = ({ member, onChanged }: ProfileTabProps) => {
             >
               {currentTerm.fee_plan ? null : <NotAvailable label="Priced before plans existed" />}
             </Field>
-            <Field
-              label="Term"
-              value={`${formatDate(currentTerm.valid_from)} — ${formatDate(currentTerm.valid_till)}`}
-            />
+            <Field label="Term" value={null}>
+              <div className="flex items-center gap-2">
+                <span>
+                  {formatDate(currentTerm.valid_from)} — {formatDate(currentTerm.valid_till)}
+                </span>
+                <StatusChip domain="term" status={currentTerm.status} />
+              </div>
+            </Field>
             <Field
               label="Renews at"
               value={

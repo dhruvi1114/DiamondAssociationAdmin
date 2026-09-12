@@ -230,6 +230,17 @@ export const ENDPOINTS = {
     FACETS: `${API_BASE}/admin/audit/facets`,
   },
 
+  /**
+   * Membership renewals — the three buckets and the job that runs the cycle
+   * now (M6, screen A-20). `renewal.view` reads the summary and the list,
+   * `renewal.manage` runs the job.
+   */
+  RENEWALS: {
+    SUMMARY: `${API_BASE}/admin/renewals/summary`,
+    LIST: `${API_BASE}/admin/renewals`,
+    RUN: `${API_BASE}/admin/renewals/run`,
+  },
+
   SETTINGS: `${API_BASE}/admin/settings`,
   /**
    * The `is_public` settings, unauthenticated — the association's display name,

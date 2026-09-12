@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 // `Download` belongs to the commented-out row action below.
-import { Eye } from 'lucide-react';
+import { Check, Eye, X } from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -60,8 +60,7 @@ export interface MemberDocumentsPanelProps {
 
 export const MemberDocumentsPanel = ({ memberId, onChanged }: MemberDocumentsPanelProps) => {
   const { can } = usePermissions();
-  // Unused while verify / reject are commented out of the row actions below,
-  // and kept because the dialog they open still exists.
+  // Gates the verify / reject row actions, which only a PENDING document shows.
 
   const canVerify = can('document.verify');
 
@@ -182,11 +181,6 @@ export const MemberDocumentsPanel = ({ memberId, onChanged }: MemberDocumentsPan
   // already silenced the matching ESLint rule.
   void open;
 
-  // Kept deliberately (see the note above the declaration). Referenced so
-  // TypeScript's noUnusedLocals does not force its deletion — the author
-  // already silenced the matching ESLint rule.
-  void canVerify;
-
   return (
     <Card
       title="Documents"
@@ -261,26 +255,29 @@ export const MemberDocumentsPanel = ({ memberId, onChanged }: MemberDocumentsPan
                       },
                       */
                       /*
-                        **No verify / reject here, at the client's request.**
-
-                        A member's KYC is decided once, on the application, by
-                        the reviewer who approved it — approval copies those
-                        files across already carrying their verdict
-                        (`activation.service` → `adoptApplicationDocuments`).
-                        Re-deciding them on the member record would let somebody
-                        overturn a committee decision from a screen that shows
-                        none of the context the committee had.
-
-                        The decision dialog and `open()` below still exist, so
-                        restoring this is these two entries and nothing else.
-
-                        ...(canVerify
-                          ? [
-                              { key: 'verify', ...onClick: () => open(document, 'VERIFIED') },
-                              { key: 'reject', ...onClick: () => open(document, 'REJECTED') },
-                            ]
-                          : []),
+                        Verify / reject show on a PENDING document only — on a
+                        member record that is one the member replaced from their
+                        Profile. Everything carried over from the application
+                        already has the committee's verdict
+                        (`activation.service` → `adoptApplicationDocuments`), and
+                        re-deciding that here is still not offered.
                       */
+                      {
+                        key: 'verify',
+                        icon: <Check size={16} strokeWidth={1.5} />,
+                        label: 'Mark verified',
+                        success: true,
+                        hidden: !canVerify || document.verification_status !== 'PENDING',
+                        onClick: () => open(document, 'VERIFIED'),
+                      },
+                      {
+                        key: 'reject',
+                        icon: <X size={16} strokeWidth={1.5} />,
+                        label: 'Mark rejected',
+                        danger: true,
+                        hidden: !canVerify || document.verification_status !== 'PENDING',
+                        onClick: () => open(document, 'REJECTED'),
+                      },
                     ]}
                   />
                 </div>

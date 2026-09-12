@@ -137,6 +137,7 @@ export const STATIC_OPTIONS: Record<string, { id: string; name: string }[]> = {
   ],
   termStatus: [
     { id: 'PENDING_PAYMENT', name: 'Awaiting payment' },
+    { id: 'PAID_UPCOMING', name: 'Paid, starts later' },
     { id: 'ACTIVE', name: 'Covered' },
     { id: 'EXPIRED', name: 'Lapsed' },
     { id: 'CANCELLED', name: 'Cancelled' },

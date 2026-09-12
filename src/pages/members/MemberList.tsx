@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { EyeOutlined } from '@ant-design/icons';
 import {
+  Badge,
   Card,
   DataTable,
   DateCell,
   FilterDropdown,
   FilterGroup,
+  FormSelect,
   Highlight,
   MultiSelect,
   NotAvailable,
@@ -63,12 +65,28 @@ interface MemberFilters {
   /** Primary-address city / state NAMES — the same match the API does. */
   city: string[];
   state: string[];
+  /** Only members holding a document nobody has checked yet. */
+  pendingDocuments: boolean;
 }
 
-const EMPTY_MEMBER_FILTERS: MemberFilters = { status: [], category: [], city: [], state: [] };
+const EMPTY_MEMBER_FILTERS: MemberFilters = {
+  status: [],
+  category: [],
+  city: [],
+  state: [],
+  pendingDocuments: false,
+};
+
+const DOCUMENTS_OPTIONS: Array<{ value: 'any' | 'pending'; label: string }> = [
+  { value: 'any', label: 'Any' },
+  { value: 'pending', label: 'Awaiting verification' },
+];
 
 export const MemberList = () => {
   const navigate = useNavigate();
+  /* Read once, for the dashboard's Replaced Documents tile
+     (`/members?documents=pending`); the filter panel owns it from then on. */
+  const [params, setParams] = useSearchParams();
 
   const [rows, setRows] = useState<MemberListRow[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta | undefined>();
@@ -77,7 +95,10 @@ export const MemberList = () => {
   const [error, setError] = useState<DisplayError | null>(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
-  const [filters, setFilters] = useState<MemberFilters>(EMPTY_MEMBER_FILTERS);
+  const [filters, setFilters] = useState<MemberFilters>(() => ({
+    ...EMPTY_MEMBER_FILTERS,
+    pendingDocuments: params.get('documents') === 'pending',
+  }));
   const [sort, setSort] = useState<TableSort>(MEMBER_DEFAULT_SORT);
   const locations = useLocationOptions();
 
@@ -86,11 +107,12 @@ export const MemberList = () => {
     filters.status.length ||
     filters.category.length ||
     filters.city.length ||
-    filters.state.length,
+    filters.state.length ||
+    filters.pendingDocuments,
   );
-  const activeFilterCount = [filters.status, filters.category, filters.city, filters.state].filter(
-    (f) => f.length,
-  ).length;
+  const activeFilterCount =
+    [filters.status, filters.category, filters.city, filters.state].filter((f) => f.length).length +
+    (filters.pendingDocuments ? 1 : 0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -105,6 +127,7 @@ export const MemberList = () => {
         ...(filters.category.length ? { category_id: filters.category.join(',') } : {}),
         ...(filters.city.length ? { city: filters.city.join(',') } : {}),
         ...(filters.state.length ? { state: filters.state.join(',') } : {}),
+        ...(filters.pendingDocuments ? { documents: 'pending' as const } : {}),
         sortBy: sort.sortBy as MemberSortBy,
         sortOrder: sort.sortOrder,
       });
@@ -133,16 +156,37 @@ export const MemberList = () => {
     setPage(1);
   }, []);
 
-  const applyFilters = useCallback((next: MemberFilters) => {
-    setFilters(next);
-    setPage(1);
-  }, []);
+  /* Keeps `?documents=pending` in step with the panel, so a refresh or a
+     shared link shows the same list and clearing the filter really clears it. */
+  const syncDocumentsParam = useCallback(
+    (pending: boolean) =>
+      setParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          if (pending) next.set('documents', 'pending');
+          else next.delete('documents');
+          return next;
+        },
+        { replace: true },
+      ),
+    [setParams],
+  );
+
+  const applyFilters = useCallback(
+    (next: MemberFilters) => {
+      setFilters(next);
+      setPage(1);
+      syncDocumentsParam(next.pendingDocuments);
+    },
+    [syncDocumentsParam],
+  );
 
   const clearFilters = useCallback(() => {
     setSearch('');
     setFilters(EMPTY_MEMBER_FILTERS);
     setPage(1);
-  }, []);
+    syncDocumentsParam(false);
+  }, [syncDocumentsParam]);
 
   /* Search first, then the filter panel — the toolbar order every list uses. */
   const toolbar = (
@@ -204,6 +248,17 @@ export const MemberList = () => {
                 searchThreshold={8}
                 options={asOptions(locations.cities)}
                 onChange={(next) => setDraft((d) => ({ ...d, city: next.map(String) }))}
+              />
+            </FilterGroup>
+
+            <FilterGroup label="Documents">
+              <FormSelect
+                className="w-full"
+                value={draft.pendingDocuments ? 'pending' : 'any'}
+                options={DOCUMENTS_OPTIONS}
+                onChange={(next) =>
+                  setDraft((d) => ({ ...d, pendingDocuments: next === 'pending' }))
+                }
               />
             </FilterGroup>
           </>
@@ -282,11 +337,20 @@ export const MemberList = () => {
 
           if (total === 0) return <NotAvailable />;
 
-          return (
-            <span className="tabular text-supporting text-fg">
-              {pending > 0 ? `${pending} of ${total} pending` : `${total} on file`}
-            </span>
-          );
+          /* Amber when something waits on the admin — a file the member
+             replaced from their Profile — so it stands out in the list. */
+          if (pending > 0) {
+            return (
+              <Badge
+                tone="warning"
+                tooltip={`${pending} of ${total} on file awaiting verification`}
+              >
+                {`${pending} to verify`}
+              </Badge>
+            );
+          }
+
+          return <span className="tabular text-supporting text-fg">{`${total} on file`}</span>;
         },
       },
       {
@@ -300,7 +364,7 @@ export const MemberList = () => {
         title: 'Mobile',
         dataIndex: 'mobile',
         key: 'mobile',
-        width: 130,
+        width: 140,
         render: (_: unknown, row: MemberListRow) =>
           row.mobile ? (
             <span className="font-mono text-supporting text-fg">{row.mobile}</span>
@@ -365,37 +429,23 @@ export const MemberList = () => {
         title: 'Created By',
         dataIndex: 'created_by',
         key: 'created_by',
-        width: 150,
-        render: (_: unknown, row: MemberListRow) =>
-          row.created_by ? (
-            <span className="text-supporting text-fg">{row.created_by}</span>
-          ) : (
-            <NotAvailable />
-          ),
+        width: 160,
+        // 160 less the cell's 24px of padding — see `TextCell`.
+        render: (value: string | null) => <TextCell value={value} width={136} />,
       },
       {
         title: 'Updated By',
         dataIndex: 'updated_by',
         key: 'updated_by',
-        width: 150,
-        render: (_: unknown, row: MemberListRow) =>
-          row.updated_by ? (
-            <span className="text-supporting text-fg">{row.updated_by}</span>
-          ) : (
-            <NotAvailable label="System" />
-          ),
+        width: 160,
+        render: (value: string | null) => <TextCell value={value} width={136} empty="System" />,
       },
       {
         title: 'Approved By',
         dataIndex: 'approved_by',
         key: 'approved_by',
         width: 180,
-        render: (_: unknown, row: MemberListRow) =>
-          row.approved_by ? (
-            <span className="text-supporting text-fg">{row.approved_by}</span>
-          ) : (
-            <NotAvailable label="System" />
-          ),
+        render: (value: string | null) => <TextCell value={value} width={156} empty="System" />,
       },
       /*
         Only while something on this page carries one.
@@ -411,12 +461,7 @@ export const MemberList = () => {
               dataIndex: 'rejected_by',
               key: 'rejected_by',
               width: 180,
-              render: (_: unknown, row: MemberListRow) =>
-                row.rejected_by ? (
-                  <span className="text-supporting text-fg">{row.rejected_by}</span>
-                ) : (
-                  <NotAvailable />
-                ),
+              render: (value: string | null) => <TextCell value={value} width={156} />,
             },
           ]
         : []),

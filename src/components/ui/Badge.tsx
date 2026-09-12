@@ -15,7 +15,21 @@ export interface BadgeProps {
   tone?: StatusVariant;
   /** Why it is here. A badge that abbreviates should always explain on hover. */
   tooltip?: string;
+  /**
+   * `compact` is the count style for tight rows — the sidebar's work-queue
+   * number, where the table-cell pill (≈30px for a single digit) took the room
+   * the label needed and cut "Member Requests" to "Member Requ…". A fixed-height
+   * 18px capsule, centred, 11px type: a single digit is a circle, two digits a
+   * short capsule. Use the default everywhere else — a qualifier like
+   * "Awaiting payment" needs the table pill's padding to read as a label.
+   */
+  size?: 'default' | 'compact';
 }
+
+const SIZE_CLASSES: Record<NonNullable<BadgeProps['size']>, string> = {
+  default: 'px-[10px] py-[3px] text-12',
+  compact: 'h-[18px] min-w-[18px] justify-center px-[5px] text-11 leading-none',
+};
 
 /**
  * A small pill for a count or a qualifier inside a table cell.
@@ -32,10 +46,10 @@ export interface BadgeProps {
  * No icon, deliberately. A count is legible without one, and an icon beside a
  * StatusChip in the same cell reads as a second status.
  */
-export const Badge = ({ children, tone = 'neutral', tooltip }: BadgeProps) => {
+export const Badge = ({ children, tone = 'neutral', tooltip, size = 'default' }: BadgeProps) => {
   const badge = (
     <span
-      className={`inline-flex items-center whitespace-nowrap rounded-full px-[10px] py-[3px] text-12 font-medium ${CLASSES[tone]}`}
+      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full font-medium ${SIZE_CLASSES[size]} ${CLASSES[tone]}`}
     >
       {children}
     </span>

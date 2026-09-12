@@ -1,3 +1,4 @@
+import { Tooltip } from 'antd';
 import { ArrowDown, ArrowUp, Minus } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
@@ -67,14 +68,22 @@ export const KpiTile = ({
   return (
     /* `dense` — 12px padding, not 16. Six tiles in a row are read at a glance
        rather than studied, and the extra padding was buying nothing but height. */
-    <Card dense className="h-full">
-      <div className="flex items-center gap-2">
+    <Card dense className="h-full min-w-0">
+      <div className="flex min-w-0 items-center gap-2">
         {icon ? (
-          <span className="text-fg-muted" aria-hidden="true">
+          <span className="shrink-0 text-fg-muted" aria-hidden="true">
             {icon}
           </span>
         ) : null}
-        <span className="text-supporting text-fg-muted">{label}</span>
+        {/* Same clip as `TextCell`: a flex item will not shrink below its
+            text unless the truncated node is block-level inside a `min-w-0`
+            wrapper, and Ant Design's Tooltip must wrap that node or the
+            hover target is the unclipped full string. */}
+        <div className="min-w-0 flex-1">
+          <Tooltip title={label}>
+            <span className="block truncate text-supporting text-fg-muted">{label}</span>
+          </Tooltip>
+        </div>
       </div>
 
       {loading ? (

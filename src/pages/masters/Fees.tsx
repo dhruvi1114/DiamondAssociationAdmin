@@ -112,8 +112,11 @@ const asError = (error: unknown): ApiError => {
 const feeState = (fee: Fee): string => {
   if (!fee.is_active) return 'INACTIVE';
   const today = dayjs().startOf('day');
-  if (dayjs(fee.effective_from).isAfter(today)) return 'SCHEDULED';
-  if (fee.effective_to && dayjs(fee.effective_to).isBefore(today)) return 'CLOSED';
+  // Calendar days, not instants — see `planState` in StructureDetailDrawer:
+  // a DATE read in IST lands at 05:30, so a fee starting today read as Scheduled.
+  const day = today.format('YYYY-MM-DD');
+  if (fee.effective_from.slice(0, 10) > day) return 'SCHEDULED';
+  if (fee.effective_to && fee.effective_to.slice(0, 10) < day) return 'CLOSED';
 
   return 'ACTIVE';
 };

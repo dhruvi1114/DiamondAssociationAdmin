@@ -13,6 +13,7 @@ import Categories from '@/pages/masters/Categories';
 import CompanyTypes from '@/pages/masters/CompanyTypes';
 import EventTypes from '@/pages/masters/EventTypes';
 import RegistrationDetail from '@/pages/events/RegistrationDetail';
+import Renewals from '@/pages/renewals/Renewals';
 import DocumentTypes from '@/pages/masters/DocumentTypes';
 import Fees from '@/pages/masters/Fees';
 import FeeStructures from '@/pages/masters/FeeStructures';
@@ -440,6 +441,16 @@ export const AppRoutes = () => {
           }
         />
 
+        {/* M6 — renewal buckets (due soon / grace / expired) and the "run the cycle now" job. */}
+        <Route
+          path="/renewals"
+          element={
+            <RequirePermission anyOf={['renewal.view']}>
+              <Renewals />
+            </RequirePermission>
+          }
+        />
+
         {NAV_GROUPS.flatMap((group) =>
           group.items
             .filter(
@@ -464,6 +475,7 @@ export const AppRoutes = () => {
                   '/billing/payments',
                   '/billing/refunds',
                   '/communication/enquiries',
+                  '/renewals',
                 ].includes(item.path),
             )
             .map((item) => (

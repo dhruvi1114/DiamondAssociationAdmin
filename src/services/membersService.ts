@@ -151,29 +151,41 @@ export interface MemberDetail {
   addresses: MemberAddress[];
   invoices: MemberInvoice[];
   /**
-   * The current term and the plan that priced it — newest expiry first, at most one.
+   * The term and the plan that priced it — newest expiry first, at most one.
    *
    * `fee_plan` is null for a term created before fee plans existed, or one priced the old way.
    * The panel renders what it has rather than inventing a renewal figure it cannot source.
+   *
+   * This is "newest expiry", not "current": once a renewal term exists, this row is the
+   * unpaid *next* term. Use `current_term` for what the member is covered by right now.
    */
-  terms?: {
-    id: string;
-    term_type: string;
-    valid_from: string;
-    valid_till: string;
-    status: string;
-    fee_plan: {
-      id: string;
-      name: string;
-      billing_cycle: 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY';
-      amount: string;
-      renewal_amount: string;
-      tax_rate: string;
-      currency: string;
-    } | null;
-  }[];
+  terms?: MemberTerm[];
+  /**
+   * The term the member is covered by right now (`Members.current_term_id`).
+   *
+   * `terms` above becomes the unpaid renewal as soon as one is raised, so anything that means
+   * "current" — this card included — has to read this field instead.
+   */
+  current_term?: MemberTerm | null;
   status_history: MemberStatusHistoryRow[];
   change_requests: MemberChangeRequest[];
+}
+
+export interface MemberTerm {
+  id: string;
+  term_type: string;
+  valid_from: string;
+  valid_till: string;
+  status: string;
+  fee_plan: {
+    id: string;
+    name: string;
+    billing_cycle: 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY';
+    amount: string;
+    renewal_amount: string;
+    tax_rate: string;
+    currency: string;
+  } | null;
 }
 
 export interface MemberDocument {
@@ -210,6 +222,8 @@ export interface ListMembersParams {
   /** Comma-separated city / state NAMES, matched against the primary address. */
   city?: string;
   state?: string;
+  /** `pending` = only members holding a document nobody has checked yet. */
+  documents?: 'pending';
   sortBy?: MemberSortBy;
   sortOrder?: 'asc' | 'desc';
 }

@@ -44,8 +44,15 @@ export interface StructureDetailDrawerProps {
 const planState = (plan: FeePlan): string => {
   if (!plan.is_active) return 'INACTIVE';
   const today = dayjs().startOf('day');
-  if (dayjs(plan.effective_from).isAfter(today)) return 'SCHEDULED';
-  if (plan.effective_to && dayjs(plan.effective_to).isBefore(today)) return 'CLOSED';
+  /*
+    Compared as calendar days, not instants. The API sends a DATE as
+    "2026-09-11T00:00:00.000Z"; dayjs reads that in the browser's zone (IST),
+    i.e. 05:30 on the 11th — after today's midnight — so a plan starting TODAY
+    showed as Scheduled all day.
+  */
+  const day = today.format('YYYY-MM-DD');
+  if (plan.effective_from.slice(0, 10) > day) return 'SCHEDULED';
+  if (plan.effective_to && plan.effective_to.slice(0, 10) < day) return 'CLOSED';
 
   return 'ACTIVE';
 };

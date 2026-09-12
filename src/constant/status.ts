@@ -47,6 +47,7 @@ const map: Record<string, StatusPresentation> = {
     member row: the same word would be answering two different questions.
   */
   'term.PENDING_PAYMENT': { variant: 'warning', label: 'Awaiting payment' },
+  'term.PAID_UPCOMING': { variant: 'info', label: 'Paid, starts later' },
   'term.ACTIVE': { variant: 'success', label: 'Covered' },
   'term.EXPIRED': { variant: 'danger', label: 'Lapsed' },
   'term.CANCELLED': { variant: 'neutral', label: 'Cancelled' },
@@ -224,6 +225,9 @@ const map: Record<string, StatusPresentation> = {
   'job.RUNNING': { variant: 'info', label: 'Running' },
   'job.SUCCESS': { variant: 'success', label: 'Succeeded' },
   'job.FAILED': { variant: 'danger', label: 'Failed' },
+
+  // The member's own decision not to renew (M6 Task 17) — not a TermStatus value, so its own domain.
+  'renewal.DECLINED': { variant: 'neutral', label: 'Declined' },
 };
 
 /**

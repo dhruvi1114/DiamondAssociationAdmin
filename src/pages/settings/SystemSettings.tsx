@@ -1,5 +1,6 @@
 import { ConfigProvider, Input as AntInput } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Building2, FileText, Image as ImageIcon, type LucideIcon, Settings } from 'lucide-react';
 import {
   Button,
   Card,
@@ -64,28 +65,61 @@ const GROUPS: {
    *  would otherwise leave beside it. */
   extraKeys?: string[];
   title: string;
-  note: string;
+  /** Drawn in a rounded tile beside the title, as on every detail card. */
+  icon: LucideIcon;
+  /**
+   * One line under the title. None of the four cards carries one any more
+   * (client redesign, 2026-09-10) — the icon and the fields say what each card
+   * is — but a card that genuinely needs orientation can still set it.
+   */
+  note?: string;
   /** Fields per row at `xl` and up. 3 unless a card says otherwise — Operations
    *  earns 4 because "Application fee", "In-app bell", "Resubmission limit"
    *  and "Member Directory" read as one row of four short switches, not two
    *  cramped rows of two. */
-  columns?: 3 | 4;
+  columns?: 2 | 3 | 4;
 }[] = [
+  /*
+    Four cards in a 2 x 2 grid (client redesign, 2026-09-10). The grid itself was
+    already two columns — `lg:grid-cols-2` below — so this is only a question of
+    which setting sits in which card.
+
+    The images and the two prose blocks leave the cards they belong to by
+    database group, through `extraKeys`: a key claimed by one card's `extraKeys`
+    is excluded from every other card's group match (see `sections`). That is
+    how Branding takes the three `organisation.*` images without Organisation
+    also drawing them.
+  */
   {
     key: 'organisation',
     groups: ['organisation'],
     extraKeys: ['notification.email_enabled', 'notification.whatsapp_enabled'],
     title: 'Organisation',
-    note: 'Who the association is and how it reaches members — printed on invoices and receipts, shown to members, and the channels notifications go out on.',
+    icon: Building2,
+    /*
+      Three across, with explicit breaks (client request, 2026-09-10):
+
+        Display name | Legal name
+        Support email | Office phone
+        GSTIN | Email delivery | WhatsApp delivery
+        Registered address (full row)
+
+      The first two lines are pairs an admin reads together, so `startsRow` on
+      Support email and GSTIN cuts them at two rather than letting them fill to
+      three. GSTIN then leads a row of three short controls instead of sitting
+      beside the tall address box, which had pushed its input down to the
+      textarea's foot and left a hole under its label.
+    */
+    columns: 3,
   },
   {
     key: 'operations',
     /*
-      `events` and `membership` are here rather than in cards of their own for
-      the reason the other five are: how long seats are held and how long a
-      lapsed membership is tolerated are both "how the platform runs day to
-      day", and a card holding a single field reads as more screen than the
-      field is worth.
+      `events` and `membership` are here rather than in cards of their own:
+      how long seats are held and how long a lapsed membership is tolerated are
+      both "how the platform runs day to day". `registration` stays listed so a
+      setting added to that group later still has a home, though its one current
+      row — the consent text — is claimed by Default Texts.
     */
     groups: [
       'billing',
@@ -96,12 +130,28 @@ const GROUPS: {
       'events',
       'membership',
     ],
-    columns: 4,
-    // Renamed from "Billing" once notifications, applications, the directory
-    // and registration joined the invoice/fee settings in this one card —
-    // "Billing" described only the smaller card this used to be.
     title: 'Operations',
-    note: 'How the platform runs day to day — invoices, fees, notifications, applications, the directory and the windows a booking or a membership is held open for.',
+    icon: Settings,
+    columns: 3,
+  },
+  {
+    key: 'branding',
+    groups: [],
+    extraKeys: ['organisation.logo', 'organisation.logo_mark', 'organisation.signature'],
+    title: 'Branding & Identity',
+    icon: ImageIcon,
+    columns: 3,
+  },
+  {
+    key: 'texts',
+    groups: [],
+    // Both are prose that prints on something a member reads — the form and the
+    // invoice — so they are edited side by side rather than as the tail of a
+    // card of switches.
+    extraKeys: ['registration.consent_text', 'billing.invoice_footer'],
+    title: 'Default Texts',
+    icon: FileText,
+    columns: 2,
   },
 ];
 
@@ -124,6 +174,13 @@ interface SettingCopy {
    * line comes out as one run of commas on the invoice.
    */
   multiline?: boolean;
+  /**
+   * Starting height of a `multiline` box, in lines. Defaults to 4.
+   *
+   * A starting height, not a limit: every box keeps its vertical drag handle,
+   * so the admin makes it as tall as the text needs.
+   */
+  rows?: number;
   /** A fixed set of values. Rendered as a list, so nobody has to know the spelling. */
   options?: { label: string; value: string }[];
   /**
@@ -139,6 +196,13 @@ interface SettingCopy {
   slot?: BrandingSlot;
   /** Occupies the whole row. For controls a third of a card cannot hold. */
   full?: boolean;
+  /**
+   * Marked with a red asterisk. Only where the SERVER refuses the empty value —
+   * `settings.types.ts` validates `organisation.name` and `.legal_name` as
+   * non-empty and `.support_email` as an address. An asterisk the API does not
+   * enforce would be a promise the save button breaks.
+   */
+  required?: boolean;
   /**
    * Forces a new row, leaving whatever gap that costs.
    *
@@ -161,18 +225,25 @@ const COPY: Record<string, SettingCopy> = {
   'organisation.name': {
     label: 'Display name',
     help: 'Used in email subjects, page titles and the invoice header.',
+    required: true,
   },
   'organisation.legal_name': {
     label: 'Legal name',
     help: 'The registered name printed on invoices and receipts.',
+    required: true,
   },
   'organisation.support_email': {
     label: 'Support email',
     help: 'Shown to members on error screens and in the footer of every notification.',
+    required: true,
+    // Ends the Display name / Legal name pair at two. See the Organisation card.
+    startsRow: true,
   },
   'organisation.gstin': {
     label: 'GSTIN',
     help: '15 characters, e.g. 24AABCU9603R1ZM. Invoices must not be issued to a real member while this is blank.',
+    // Leads the row it shares with the two delivery switches.
+    startsRow: true,
   },
   'notification.email_enabled': {
     label: 'Email delivery',
@@ -232,7 +303,6 @@ const COPY: Record<string, SettingCopy> = {
     label: 'Registration consent text',
     help: 'Shown beside the checkbox an applicant must tick to submit the registration form. Leave blank to print nothing beyond the checkbox itself.',
     multiline: true,
-    full: true,
   },
   'organisation.phone': {
     label: 'Office phone',
@@ -242,6 +312,13 @@ const COPY: Record<string, SettingCopy> = {
     label: 'Registered address',
     help: 'Printed under the legal name on every invoice and receipt. Type it the way it should appear, one line per line.',
     multiline: true,
+    /*
+      One line to start (client request, 2026-09-10), so the empty box reads as
+      the same height as the inputs above it rather than a panel. Still a
+      textarea, so it keeps its line breaks, and still drags taller from the
+      corner for an address that runs to three or four lines.
+    */
+    rows: 1,
     full: true,
   },
   'organisation.logo': {
@@ -267,7 +344,10 @@ const COPY: Record<string, SettingCopy> = {
     help: 'How long a booking holds its seats before payment. The window is counted from approval on an event that needs it, so an admin taking their time never shortens what the payer gets.',
   },
   'membership.grace_days': {
-    label: 'Membership grace days',
+    // "Grace days", not "Membership grace days": the long form wrapped to two
+    // lines in a third of the card and stepped its whole row down. The card and
+    // the `?` already say it is about memberships.
+    label: 'Grace days',
     help: 'How long after a membership expires it still counts as current — the window a renewal can be paid in before access is withdrawn.',
   },
   'billing.invoice_prefix': {
@@ -278,7 +358,6 @@ const COPY: Record<string, SettingCopy> = {
     label: 'Invoice footer',
     help: 'Printed at the foot of every invoice — bank details, payment terms, a declaration. Leave blank to print nothing.',
     multiline: true,
-    full: true,
   },
   'billing.renewal_basis': {
     label: 'Renewal basis',
@@ -326,6 +405,21 @@ const RETIRED = new Set([
   // Retired 2026-08-31 with decision D1 — the directory is members-only, and
   // nothing in the platform reads this key any more.
   'directory.public_enabled',
+  /*
+    Hidden at the client's request (2026-09-10) — not retired in the sense above.
+
+    Its seeded purpose is real: how many days before a membership ends the
+    renewal invoice is raised (reminders then follow at a fixed 7, 3 and 0 days).
+    But nothing reads it yet. The renewal job that would consume it is not built
+    — `SETTING_KEYS.RENEWAL_NOTICE_DAYS` is defined and validated, never used — so
+    the field on this screen changed nothing, and an admin tuning it would have
+    been adjusting a dial connected to no machine.
+
+    The stored value (15) stays in `SystemSettings`. When renewals are built,
+    decide then whether it is a fixed rule in code or an admin setting, and take
+    this key out of the list if it is the latter.
+  */
+  'membership.renewal_notice_days',
 ]);
 
 /**
@@ -363,21 +457,25 @@ const helpFor = (row: SystemSetting) => COPY[row.key]?.help ?? row.description ?
  * reads these in.
  */
 const ROW_ORDER = [
-  // Organisation. Identity first, GSTIN next, then the delivery channels
-  // `extraKeys` moved here (GROUPS, above) — filling the row GSTIN would
-  // otherwise sit in alone — then the two images, then the address, which
-  // takes a full row and so has to come last or it would break the grid in half.
+  // Organisation (client redesign, 2026-09-10): name | legal name, support
+  // email | office phone, GSTIN | email delivery | WhatsApp delivery, then the
+  // registered address on a full row. The rows are cut by `startsRow` and
+  // `full` in COPY, not by this order alone. The three images are no longer here —
+  // Branding & Identity claims them — but their order below still governs that
+  // card, since `ROW_ORDER` ranks keys, not cards.
   'organisation.name',
   'organisation.legal_name',
   'organisation.support_email',
+  'organisation.phone',
   'organisation.gstin',
   'notification.email_enabled',
   'notification.whatsapp_enabled',
+  // Last, on a row of its own: a textarea beside short controls drags their
+  // inputs down to its foot.
+  'organisation.address',
   'organisation.logo',
   'organisation.logo_mark',
   'organisation.signature',
-  'organisation.address',
-  'organisation.phone',
   // Billing. The invoice, then the term, then the fee — and the fee's amount
   // immediately after the switch that reveals it — then the rest of "day to
   // day operation": the one remaining delivery channel, the application and
@@ -574,6 +672,7 @@ export const SystemSettings = () => {
       ...rest.map((key) => ({
         key,
         title: key,
+        icon: undefined as LucideIcon | undefined,
         note: '',
         columns: undefined,
         rows: rows.filter((row) => row.group === key).sort(byRowOrder),
@@ -672,6 +771,13 @@ export const SystemSettings = () => {
 
       return (
         <ImageUpload
+          /*
+            Fills its third of the Branding card (client request, 2026-09-10) —
+            the three tiles are the card's only content, so an 80px square each
+            left two thirds of it empty. Opt-in: the same control stays a compact
+            square in the news drawer, the event poster and the rich-text editor.
+          */
+          block
           label={labelOf(row.key)}
           src={
             row.value ? `${API_ORIGIN}${ENDPOINTS.brandingImage(slot)}?v=${brandingVersion}` : null
@@ -759,9 +865,11 @@ export const SystemSettings = () => {
         <AntInput.TextArea
           aria-label={labelOf(row.key)}
           value={value}
-          rows={4}
+          // 4 unless the setting's copy says otherwise — the address starts at 1.
+          rows={copy.rows ?? 4}
           // Fixed, not auto-growing: these sit in a grid, and a cell that grows
           // as you type re-heights the row and shifts every field beside it.
+          // `vertical` is what lets a one-line box be dragged taller.
           style={{ resize: 'vertical' }}
           placeholder={row.value === '' ? 'Not set' : undefined}
           disabled={locked}
@@ -833,11 +941,26 @@ export const SystemSettings = () => {
             <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
               {sections.map((section) => (
                 <Card key={section.key} flush>
-                  <div className="border-b border-border px-4 py-3">
-                    <h2 className="m-0 text-title-secondary text-fg">{section.title}</h2>
-                    {section.note ? (
-                      <p className="m-0 mt-0.5 text-13 text-fg-muted">{section.note}</p>
+                  <div className="flex items-center gap-3 border-b border-border px-4 py-3">
+                    {/*
+                      The rounded tile every detail card in the app uses for its
+                      heading icon. Muted ink on a subtle surface — this names the
+                      card, it is not something to click.
+                    */}
+                    {section.icon ? (
+                      <span
+                        className="grid h-9 w-9 flex-none place-items-center rounded-md bg-surface-subtle text-fg-muted"
+                        aria-hidden
+                      >
+                        <section.icon size={18} strokeWidth={1.5} />
+                      </span>
                     ) : null}
+                    <div className="min-w-0">
+                      <h2 className="m-0 text-title-secondary text-fg">{section.title}</h2>
+                      {section.note ? (
+                        <p className="m-0 mt-0.5 text-13 text-fg-muted">{section.note}</p>
+                      ) : null}
+                    </div>
                   </div>
 
                   {/*
@@ -873,11 +996,21 @@ export const SystemSettings = () => {
                               key={row.key}
                               className={[
                                 'flex min-w-0 flex-col gap-1.5',
-                                // An 80px upload tile has no business claiming
-                                // an equal share of the row — stretched to it,
-                                // "Logo mark" ended up half the card away from
-                                // "Logo" instead of sitting beside it.
-                                COPY[row.key]?.slot ? 'flex-none' : 'flex-1',
+                                /*
+                                  Every cell takes an equal share of its row,
+                                  upload tiles included (client request,
+                                  2026-09-10).
+
+                                  Tiles used to be `flex-none`, back when they
+                                  shared a row with text fields in Organisation:
+                                  stretched to a share there, "Logo mark" landed
+                                  half a card away from "Logo". They now have the
+                                  Branding card to themselves, so the three split
+                                  it into equal thirds. Without that, and with the
+                                  format caption gone, they collapsed to the width
+                                  of a tile and bunched on the left.
+                                */
+                                'flex-1',
                               ].join(' ')}
                             >
                               <div className="min-w-0">
@@ -904,6 +1037,11 @@ export const SystemSettings = () => {
                                       {labelOf(row.key)}
                                     </span>
                                   )}
+                                  {COPY[row.key]?.required ? (
+                                    <span className="text-status-danger-fg" aria-hidden>
+                                      *
+                                    </span>
+                                  ) : null}
                                 </div>
                               </div>
 
@@ -925,6 +1063,23 @@ export const SystemSettings = () => {
                               line up whatever the labels above them do.
                             */}
                               <div className="mt-auto min-w-0">{control(row)}</div>
+                              {/*
+                                Format caption hidden at the client's request
+                                (2026-09-10). The same rule is still one hover
+                                away on each label's `?`, and the upload rejects a
+                                wrong file itself with a message naming the limit.
+
+                                If restored, keep it the REAL limit — PNG, JPG or
+                                WebP, 2 MB, per `branding.service.ts` and the
+                                multer cap in `settings.routes.ts` — not the
+                                "Max 1 MB" the redesign mockup showed.
+
+                              {COPY[row.key]?.slot ? (
+                                <p className="m-0 text-12 text-fg-muted">
+                                  PNG, JPG or WebP · up to 2 MB
+                                </p>
+                              ) : null}
+                              */}
                             </div>
                           ))}
                         </div>

@@ -13,6 +13,17 @@ export interface ImageUploadProps {
   disabled?: boolean;
   onSelect: (file: File) => void;
   onRemove?: () => void;
+  /**
+   * Fill the parent's width instead of sitting as an 80px square.
+   *
+   * For a card whose only content is a row of these — System Settings' Branding
+   * card — where three squares left most of it empty. Off by default: in the
+   * news drawer, the event poster and the rich-text editor the tile sits beside
+   * other fields and should stay compact. Height is unchanged either way, and the
+   * preview is `object-contain`, so a wide wordmark and a square mark both show
+   * whole in the wider box.
+   */
+  block?: boolean;
 }
 
 /**
@@ -43,6 +54,7 @@ export const ImageUpload = ({
   disabled = false,
   onSelect,
   onRemove,
+  block = false,
 }: ImageUploadProps) => {
   const input = useRef<HTMLInputElement>(null);
   const [broken, setBroken] = useState(false);
@@ -56,7 +68,7 @@ export const ImageUpload = ({
   const busy = uploading || disabled;
 
   return (
-    <div className="group relative inline-block">
+    <div className={block ? 'group relative block w-full' : 'group relative inline-block'}>
       <Tooltip title={disabled ? undefined : `${src ? 'Replace' : 'Upload'} ${noun}`}>
         <button
           type="button"
@@ -64,7 +76,9 @@ export const ImageUpload = ({
           aria-label={`${src ? 'Replace' : 'Upload'} ${noun}`}
           onClick={() => input.current?.click()}
           className={[
-            'grid h-20 w-20 place-items-center overflow-hidden rounded-lg border bg-surface p-2',
+            block
+              ? 'grid h-20 w-full place-items-center overflow-hidden rounded-lg border bg-surface p-2'
+              : 'grid h-20 w-20 place-items-center overflow-hidden rounded-lg border bg-surface p-2',
             'transition-colors duration-100',
             // Dashed while there is nothing there. A solid empty box reads as a
             // field that failed to load; a dashed one reads as a slot to fill.

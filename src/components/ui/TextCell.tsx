@@ -1,4 +1,5 @@
 import { Tooltip } from 'antd';
+import { useLayoutEffect, useRef, useState } from 'react';
 import Highlight from './Highlight';
 import NotAvailable from './NotAvailable';
 
@@ -43,14 +44,34 @@ export interface TextCellProps {
  */
 export const TextCell = ({ value, width = 220, empty, query }: TextCellProps) => {
   const text = value?.trim();
+  const ref = useRef<HTMLSpanElement>(null);
+  const [truncated, setTruncated] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) {
+      setTruncated(false);
+      return;
+    }
+
+    const measure = () => setTruncated(el.scrollWidth > el.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [text, width, query]);
 
   if (!text) {
     return <NotAvailable {...(empty ? { label: empty } : {})} />;
   }
 
   return (
-    <Tooltip title={text}>
-      <span className="block truncate align-middle text-supporting" style={{ maxWidth: width }}>
+    <Tooltip title={truncated ? text : undefined}>
+      <span
+        ref={ref}
+        className="block cursor-default truncate align-middle text-supporting"
+        style={{ maxWidth: width }}
+      >
         {query ? <Highlight text={text} query={query} /> : text}
       </span>
     </Tooltip>

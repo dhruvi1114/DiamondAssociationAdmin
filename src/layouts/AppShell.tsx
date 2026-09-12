@@ -4,11 +4,12 @@ import { Layout, Popover, Tooltip } from 'antd';
 import { Bell, ChevronDown, ChevronLeft, LogOut, Moon, Search, Sun, User } from 'lucide-react';
 import BrandMark, { BrandGlyph } from '@/components/brand/BrandMark';
 import { PanelToggleIcon } from '@/components/brand/PanelToggleIcon';
-import { CommandPalette, StatusChip, type CommandItem } from '@/components/ui';
+import { Badge, CommandPalette, StatusChip, type CommandItem } from '@/components/ui';
 import { NAV_GROUPS, type NavGroup, type NavItem } from '@/constant/navigation';
 import { PageTitleContext } from '@/hooks/usePageTitle';
 import { usePermissions } from '@/hooks/usePermissions';
 import { authService } from '@/services/authService';
+import { DashboardService, type DashboardSummary } from '@/services/dashboardService';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { signedOut } from '@/store/authSlice';
 import { navCollapsedChanged, navGroupToggled, themeToggled } from '@/store/uiSlice';
@@ -88,6 +89,49 @@ export const AppShell = () => {
       })).filter((group) => group.items.length > 0),
     [canAny],
   );
+
+  /**
+   * The work-queue counts behind the nav badges (currently just Member
+   * Requests). Fetched once per mount and refetched on route change — the
+   * server caches for 60s, so this costs nothing extra and keeps the number
+   * current after a reviewer acts elsewhere in the app.
+   *
+   * Gated on `groups` rather than a hard-coded permission string: `groups` is
+   * already filtered to what this admin may see, so "some visible item wants
+   * a count" is exactly "the admin holds that item's permission" — today that
+   * is `application.view`, and the check keeps working if another nav item
+   * grows a badge later.
+   */
+  const hasCountedItem = useMemo(
+    () => groups.some((group) => group.items.some((item) => item.count)),
+    [groups],
+  );
+
+  const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary | null>(null);
+
+  useEffect(() => {
+    if (!hasCountedItem) {
+      setDashboardSummary(null);
+
+      return;
+    }
+
+    let cancelled = false;
+
+    DashboardService.summary()
+      .then((result) => {
+        if (!cancelled) setDashboardSummary(result.data);
+      })
+      .catch(() => {
+        // A failed fetch renders no badge, never an error or a spinner in the
+        // rail — the sidebar is on every screen and is not the place to
+        // surface a transient network hiccup.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasCountedItem, location.pathname]);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
 
@@ -218,6 +262,27 @@ export const AppShell = () => {
     const Icon = item.icon;
     const active = selectedKey === item.path;
 
+    /*
+      "5 pending" — the badge, hidden the moment the queue is empty so the
+      rail never carries a stale zero. `secondaryKey` (action-needed) is
+      deliberately never part of this number: see the doc on `NavItem.count`.
+    */
+    const pendingCount = item.count ? dashboardSummary?.[item.count.key] : undefined;
+    const showBadge = typeof pendingCount === 'number' && pendingCount > 0;
+
+    const secondaryCount = item.count?.secondaryKey
+      ? dashboardSummary?.[item.count.secondaryKey]
+      : undefined;
+
+    // "5 pending · 1 action needed" — both facts, surfaced on hover only.
+    const hoverDetail = showBadge
+      ? `${pendingCount} pending${
+          typeof secondaryCount === 'number' && secondaryCount > 0
+            ? ` · ${secondaryCount} ${item.count?.secondaryLabel ?? 'action needed'}`
+            : ''
+        }`
+      : null;
+
     const row = (
       <Link
         to={item.path}
@@ -231,14 +296,46 @@ export const AppShell = () => {
         ].join(' ')}
       >
         <Icon {...ICON} className="shrink-0" aria-hidden />
-        {!collapsed ? <span className="truncate">{item.label}</span> : null}
+        {!collapsed ? (
+          <>
+            {/*
+              Label and count share one inner flex with a 6px gap, instead of each
+              taking the row's 10px gap. The rail is 216px, leaving ~170px inside a
+              row; with the table-size pill and two 10px gaps the label had ~105px
+              and "Member Requests" (≈115px at 14px) was cut. The compact count
+              plus the tighter gap leaves it ~118px. The label still truncates, so
+              a longer future label degrades to an ellipsis rather than a wrap.
+            */}
+            <span className="flex min-w-0 flex-1 items-center gap-1.5">
+              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+              {showBadge ? (
+                <Badge tone="neutral" size="compact">
+                  {String(pendingCount)}
+                </Badge>
+              ) : null}
+            </span>
+          </>
+        ) : null}
       </Link>
     );
 
+    /*
+      Collapsed: the icon-only tooltip already carries the label, so the count
+      rides along in the same string — otherwise the number would be lost the
+      moment the rail folds. Expanded: the label and the badge are already on
+      screen, so the tooltip (on the whole row, badge included) only needs to
+      add the detail neither one shows by itself.
+    */
+    const tooltipTitle = collapsed
+      ? hoverDetail
+        ? `${item.label} — ${hoverDetail}`
+        : item.label
+      : hoverDetail;
+
     return (
       <li key={item.key} className={collapsed ? 'flex justify-center' : undefined}>
-        {collapsed ? (
-          <Tooltip title={item.label} placement="right" mouseEnterDelay={0.2}>
+        {collapsed || tooltipTitle ? (
+          <Tooltip title={tooltipTitle} placement="right" mouseEnterDelay={0.2}>
             {row}
           </Tooltip>
         ) : (

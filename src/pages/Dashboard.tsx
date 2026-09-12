@@ -1,11 +1,12 @@
 import { Link } from 'react-router-dom';
 import {
   CheckCircleOutlined,
+  FileSyncOutlined,
   FileTextOutlined,
   SafetyOutlined,
   SolutionOutlined,
   TeamOutlined,
-  UserSwitchOutlined,
+  // UserSwitchOutlined, (belongs to the commented-out Change Requests tile)
 } from '@ant-design/icons';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Card, EmptyState, PageHeader } from '@/components/ui';
@@ -104,9 +105,26 @@ const QUEUES: QueueDefinition[] = [
     path: '/applications?pending=true',
   },
   {
+    key: 'member-documents',
+    field: 'memberDocuments',
+    /*
+      Its own tile rather than folded into KYC Documents: these sit on Member
+      Companies, not Member Requests, and one tile can only open one page.
+    */
+    label: 'Replaced Documents',
+    description: 'awaiting verification',
+    icon: <FileSyncOutlined />,
+    anyOf: ['document.verify'],
+    module: 'M3',
+    path: '/members?documents=pending',
+  },
+  /*
+    Change Requests tile hidden with its nav item (client decision, 2026-09-11):
+    profile edits save directly now, so the queue stays empty.
+
+  {
     key: 'change-requests',
     field: 'changeRequests',
-    /* Matches the nav item this tile opens, so the two name the same screen. */
     label: 'Change Requests',
     description: 'awaiting approval',
     icon: <UserSwitchOutlined />,
@@ -114,6 +132,7 @@ const QUEUES: QueueDefinition[] = [
     module: 'M3',
     path: '/members/change-requests',
   },
+  */
   /*
     "Overdue invoices" removed for the same reason: the Overdue Invoices tile
     above counts the same invoices and additionally says what they are worth,
@@ -219,6 +238,7 @@ export const Dashboard = () => {
 
   const visible = QUEUES.filter((queue) => canAny(...queue.anyOf));
   const firstName = profile?.fullName?.split(' ')[0];
+  const kpiTileCount = 4 + (SHOW_NEXT_EVENT ? 1 : 0) + (SHOW_QUEUE_BOARD ? visible.length : 0);
 
   /**
    * `undefined` = not counted yet · `null` = the count failed · number = real.
@@ -315,15 +335,23 @@ export const Dashboard = () => {
         simply take the places after the figures.
       */}
       {/*
-        Six across from `xl` up, not `2xl`.
+        Column count matches the tiles that are actually on, so a hidden Next
+        Event does not leave an empty seventh slot (and squeeze the rest).
 
-        A laptop at 1280–1440 is the common width here, and at `2xl` the row
-        broke into two bands of three on exactly those screens — which is the
-        layout this row was merged to get rid of. Six tiles at 1280 is ~200px
-        each: enough for the figure, with the longer labels wrapping to two
-        lines rather than truncating.
+        Full class names in the ternary so Tailwind's scanner keeps every
+        `xl:grid-cols-*` it needs — a concatenated string would be purged.
       */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6 [&>*]:h-full">
+      <div
+        className={`grid grid-cols-2 gap-3 md:grid-cols-3 [&>*]:h-full ${
+          kpiTileCount <= 4
+            ? 'xl:grid-cols-4'
+            : kpiTileCount === 5
+              ? 'xl:grid-cols-5'
+              : kpiTileCount === 6
+                ? 'xl:grid-cols-6'
+                : 'xl:grid-cols-7'
+        }`}
+      >
         <KpiTile
           label="Active Members"
           icon={<TeamOutlined />}

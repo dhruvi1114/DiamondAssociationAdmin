@@ -15,16 +15,18 @@ import {
   MapPin,
   // Network,  ← with the Organisation entry below
   Newspaper,
+  RefreshCw,
   ScrollText,
   // Send,  ← with the Outbox entry below
   Settings,
   ShieldCheck,
   Tags,
   Undo2,
-  UserPen,
+  // UserPen, (belongs to the commented-out Change Requests nav item)
   Users,
   Workflow,
 } from 'lucide-react';
+import type { DashboardSummary } from '@/services/dashboardService';
 
 /**
  * Left-nav structure (information-architecture.md §2).
@@ -60,6 +62,23 @@ export interface NavItem {
    * `member-company` tab on `ApplicationQueue.tsx`.
    */
   hidden?: boolean;
+  /**
+   * Links this item to the work-queue counts in `DashboardService.summary()`,
+   * for the small badge `AppShell` draws beside it.
+   *
+   * `key` drives the badge's number and its visibility — the badge is hidden
+   * whenever that count is 0 or absent. `secondaryKey` is additional context
+   * shown only on hover (badge tooltip, or the collapsed-rail tooltip), never
+   * folded into the number itself: for Member Requests that keeps
+   * "action needed" (waiting on the applicant) out of the count that should
+   * reach zero once staff have done everything asked of them.
+   */
+  count?: {
+    key: keyof DashboardSummary;
+    secondaryKey?: keyof DashboardSummary;
+    /** Word for `secondaryKey` in the hover text, e.g. "action needed". */
+    secondaryLabel?: string;
+  };
 }
 
 export interface NavGroup {
@@ -107,6 +126,11 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ClipboardList,
         anyOf: ['application.view'],
         module: 'M4',
+        count: {
+          key: 'applications',
+          secondaryKey: 'applicationsActionNeeded',
+          secondaryLabel: 'action needed',
+        },
       },
       {
         key: 'members',
@@ -127,7 +151,15 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Users,
         anyOf: ['member.view'],
         module: 'M3',
+        /* Documents members replaced from their Profile, waiting to be checked.
+           Only arrives for admins with `document.verify`; hidden at 0. */
+        count: { key: 'memberDocuments' },
       },
+      /*
+        Hidden (client decision, 2026-09-11): members now edit their profile
+        directly, so nothing reaches this queue — and its admin screen was never
+        built. Commented rather than deleted; restoring it is this block.
+
       {
         key: 'change-requests',
         label: 'Change Requests',
@@ -135,6 +167,15 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: UserPen,
         anyOf: ['member.approve_change'],
         module: 'M3',
+      },
+      */
+      {
+        key: 'renewals',
+        label: 'Renewals',
+        path: '/renewals',
+        icon: RefreshCw,
+        anyOf: ['renewal.view'],
+        module: 'M6',
       },
       /*
         Hidden at the client's request (2026-09-09).

@@ -27,6 +27,14 @@ import InvoicesService, {
 import type { PaginationMeta } from '@/services/BaseService';
 import { asDisplayError, type DisplayError } from '@/utils/apiError';
 
+/** `invoice_type` as a reader says it. */
+const INVOICE_TYPE_LABELS: Record<string, string> = {
+  MEMBERSHIP: 'Membership',
+  RENEWAL: 'Renewal',
+  EVENT: 'Event',
+  OTHER: 'Other',
+};
+
 /**
  * A-14 — every invoice across every member, so Accounts can answer "who is
  * behind on payment" without opening one member at a time. The per-member
@@ -189,6 +197,19 @@ export const Invoices = () => {
           ) : (
             <NotAvailable />
           ),
+      },
+      {
+        /*
+          What the invoice is for (client request, 2026-09-11) — joining,
+          renewing, an event. The API already sends it on every row.
+        */
+        title: 'Type',
+        dataIndex: 'invoice_type',
+        key: 'invoice_type',
+        width: 130,
+        render: (value: string) => (
+          <span className="text-supporting text-fg">{INVOICE_TYPE_LABELS[value] ?? value}</span>
+        ),
       },
       {
         /*

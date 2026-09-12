@@ -18,7 +18,16 @@ import { BaseService, type ApiResult } from '@/services/BaseService';
  */
 export interface DashboardSummary {
   applications?: number;
+  /**
+   * Applications sent back to the MEMBER to fix (`RETURNED_FOR_CORRECTION`).
+   * Kept out of `applications` on purpose — that count is "waiting for
+   * staff", this is "waiting for the applicant" — see the Member Requests
+   * nav badge in `AppShell`, the one place this is read today.
+   */
+  applicationsActionNeeded?: number;
   documents?: number;
+  /** Member documents (replaced from a Profile) nobody has checked yet. */
+  memberDocuments?: number;
   changeRequests?: number;
   invoices?: number;
   renewals?: number;
